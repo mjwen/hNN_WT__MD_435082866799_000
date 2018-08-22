@@ -202,9 +202,19 @@ RowMatrixXd relu_derivative(RowMatrixXd const& x)
 
 RowMatrixXd elu(RowMatrixXd const& x)
 {
+  //TODO Eigenic way should exist
   double alpha = 1.0;
-  // the following is invalid for large alpha, e.g. alpha=10
-  return x.cwiseMax((alpha*x.array().exp() - alpha).matrix());
+  RowMatrixXd e(x.rows(), x.cols());
+  for (int i=0; i<x.rows(); i++) {
+    for (int j=0; j<x.cols(); j++) {
+      if (x(i,j) < 0.) {
+        e(i,j) = alpha*(exp(x(i,j))-1);
+      } else {
+        e(i,j) = x(i,j);
+      }
+    }
+  }
+  return e;
 }
 
 RowMatrixXd elu_derivative(RowMatrixXd const& x)
