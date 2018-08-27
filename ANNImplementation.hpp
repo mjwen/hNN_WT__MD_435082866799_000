@@ -41,7 +41,7 @@
 #define ONE 1.0
 #define HALF 0.5
 
-#define MAX_PARAMETER_FILES 1
+#define MAX_PARAMETER_FILES 2
 
 
 //==============================================================================

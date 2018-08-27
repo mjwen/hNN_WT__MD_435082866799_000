@@ -979,6 +979,12 @@ int ANNImplementation::SetReinitMutableValues(
 	}
 	*cutoff = sqrt(*cutoff);
 
+  // compare with lj cutoff
+  if(*cutoff < lj_cutoff_) {
+    *cutoff = lj_cutoff_;
+  }
+
+
   // everything is good
   ier = KIM_STATUS_OK;
   return ier;
