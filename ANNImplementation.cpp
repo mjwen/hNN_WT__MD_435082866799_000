@@ -71,6 +71,9 @@ ANNImplementation::ANNImplementation(
       numberUniqueSpeciesPairs_(0),
       cutoffs_(0),
       cutoffs_samelayer_(0),
+      lj_epsilon_(0),
+      lj_sigma_(0),
+      lj_cutoff_(0),
 			cutoffsSq2D_(0),
 			cutoffsSq2D_samelayer_(0),
       cachedNumberOfParticles_(0),
@@ -670,12 +673,24 @@ int ANNImplementation::ProcessParameterFiles(
     Deallocate1DArray(bias);
   }
 
-
-
   delete [] numPerceptrons;
 
 //TODO delete
 //  network_->echo_input();
+
+
+  // lj parameters
+  getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%lf %lf %lf", &lj_epsilon_, &lj_sigma_, &lj_cutoff_);
+  if (ier != 3) {
+    sprintf(errorMsg, "unable to lj parameters from line:\n");
+    strcat(errorMsg, nextLine);
+    ier = KIM_STATUS_FAIL;
+    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
+    fclose(parameterFilePointers[1]);
+    return ier;
+  }
+
 
   // everything is good
   ier = KIM_STATUS_OK;
@@ -1127,3 +1142,80 @@ void write_XYZ(int natoms, const VectorOfSizeDIM* const coords) {
 }
 
 
+
+
+
+
+
+
+/* Calculate pair potential phi(r) */
+
+void calc_phi(double const epsilon, double const sigma,
+    double const cutoff, double const r, double * const phi)
+{
+
+  double sor, sor6, sor12;
+
+  if (r >= cutoff) {
+    *phi = 0;
+  }
+  else {
+    sor  = sigma/r;
+    sor6 = sor*sor*sor;
+    sor6 = sor6*sor6;
+    /*sor12= sor6*sor6; */
+    sor12= 0;
+    *phi = 4.0*epsilon*(sor12-sor6);
+  }
+
+}
+
+
+void calc_phi_dphi(double const epsilon, double const sigma,
+    double const cutoff, double const r, double * const phi, double * const dphi)
+{
+  double sor, sor6, sor12;
+
+
+  if (r >= cutoff) {
+    *phi = 0;
+    *dphi = 0;
+  }
+  else {
+    sor  = sigma/r;
+    sor6 = sor*sor*sor;
+    sor6 = sor6*sor6;
+    /*sor12= sor6*sor6;*/
+    sor12= 0;
+    *phi = 4.0*epsilon*(sor12-sor6);
+    *dphi = 24.0*epsilon*(-2.0*sor12 + sor6)/r;
+  }
+
+}
+
+
+/* switch function  */
+void switch_fn(double const x_min, double const x_max, double const x,
+    double *const fn, double * const fn_prime)
+{
+  double t;
+  double t_sq;
+  double t_cubic;
+
+  if (x <= x_min) {
+    *fn = 1;
+    *fn_prime = 0;
+  }
+  else if (x >= x_max) {
+    *fn = 0;
+    *fn_prime = 0;
+  }
+  else {
+    t = (x - x_min)/(x_max - x_min);
+    t_sq = t*t;
+    t_cubic = t_sq*t;
+    *fn = t_cubic*(-10.0 +15*t -6*t_sq) + 1;
+    *fn_prime = t_sq*(-30 + 60*t - 30*t_sq)/(x_max-x_min);
+  }
+
+}

@@ -187,6 +187,12 @@ class ANNImplementation
   double* cutoffs_;
   double* cutoffs_samelayer_;
 
+  // lj parameters
+  double lj_epsilon_;
+  double lj_sigma_;
+  double lj_cutoff_;
+
+
   // Mutable values that only change when reinit() executes
   //   Set in Reinit (via SetReinitMutableValues)
   //
@@ -285,6 +291,18 @@ class ANNImplementation
               double* const particleEnergy);
 
 };
+
+
+void calc_phi(double const epsilon, double const sigma,
+    double const cutoff, double const r, double * const phi);
+
+void calc_phi_dphi(double const epsilon, double const sigma,
+    double const cutoff, double const r, double * const phi, double * const dphi);
+void switch_fn(double const x_min, double const x_max, double const x,
+  double *const fn, double * const fn_prime);
+
+
+
 
 //==============================================================================
 //
@@ -408,6 +426,14 @@ int ANNImplementation::Compute(
 
 
 
+  // lj part
+  double r_min = 2;
+  double r_max = 4;
+  double cut_min = lj_cutoff_ - 1;
+  double cut_max = lj_cutoff_;
+  double lj_cutsq = lj_cutoff_ * lj_cutoff_;
+
+
   // calculate generalized coordinates
   //
   // Setup loop over contributing particles
@@ -464,6 +490,100 @@ int ANNImplementation::Compute(
       }
       double const rijsq = rij[0]*rij[0] + rij[1]*rij[1] + rij[2]*rij[2];
       double const rijmag = sqrt(rijsq);
+
+
+
+      // lj part
+      if (rijmag > lj_cutsq) continue;
+
+      double phi;
+      double dphi;
+      double dEidr;
+      if(need_dE) {
+
+        /* compute pair potential and its derivative */
+        calc_phi_dphi(lj_epsilon_, lj_sigma_, lj_cutoff_, rijmag, &phi, &dphi);
+
+        /* switch short range */
+        double s;
+        double ps;
+        switch_fn(r_min, r_max, rijmag, &s, &ps);
+        double s_up = 1 - s;
+        double ps_up = - ps;
+
+        /* switch cutoff */
+        double s_down;
+        double ps_down;
+        switch_fn(cut_min, cut_max, rijmag, &s_down, &ps_down);
+
+        dphi = dphi*s_up*s_down + phi*ps_up*s_down + phi*s_up*ps_down;
+        phi = phi*s_up*s_down;
+
+        dEidr = 0.5*dphi;
+
+      }
+      else{
+        calc_phi(lj_epsilon_, lj_sigma_, lj_cutoff_, rijmag, &phi);
+        double s;
+        double ps;
+        switch_fn(r_min, r_max, rijmag, &s, &ps);
+        double s_up = 1 - s;
+
+        /* switch cutoff */
+        double s_down;
+        double ps_down;
+        switch_fn(cut_min, cut_max, rijmag, &s_down, &ps_down);
+        phi = phi*s_up*s_down;
+      }
+
+
+      // particle energy
+      if (isComputeParticleEnergy)
+      {
+        particleEnergy[i] += 0.5*phi;
+      }
+      // energy
+      if (isComputeEnergy)
+      {
+
+        *energy += 0.5*phi;
+      }
+      // forces
+      if (isComputeForces)
+      {
+        for (int k = 0; k < DIM; ++k)
+        {
+          forces[i][k] += dEidr*rij[k]/rijmag;
+          forces[j][k] -= dEidr*rij[k]/rijmag;
+        }
+      }
+
+
+      // dEdr
+      if (isComputeProcess_dEdr)
+      {
+        const double* prij = rij;
+        ier = pkim->process_dEdr(const_cast<KIM_API_model**>(&pkim),
+            const_cast<double*>(&dEidr),
+            const_cast<double*>(&rijmag),
+            const_cast<double**>(&prij),
+            const_cast<int*>(&i),
+            const_cast<int*>(&j));
+        if (ier < KIM_STATUS_OK) {
+          pkim->report_error(__LINE__, __FILE__, "process_dEdr", ier);
+          return ier;
+        }
+      }
+
+
+
+
+
+
+
+
+
+      // NN part
 
       // if particles i and j not interact
       if (rijmag > rcutij) continue;
@@ -653,6 +773,7 @@ int ANNImplementation::Compute(
           } // loop over same descriptor but different parameter set
         }  // loop over descriptors
       }  // loop over kk (three body neighbors)
+
 
     }  // loop over jj
 
