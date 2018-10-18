@@ -19,7 +19,7 @@
 //
 
 //
-// Copyright (c) 2013--2015, Regents of the University of Minnesota.
+// Copyright (c) 2018, Regents of the University of Minnesota.
 // All rights reserved.
 //
 // Contributors:
@@ -32,15 +32,12 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <map>
 
-#include "KIM_API_status.h"
-#include "ANN.hpp"
 #include "ANNImplementation.hpp"
-#include "descriptor.h"
-#include "helper.h"
+#include "KIM_ModelDriverHeaders.hpp"
 
-#define MAXLINE 2048
-#define IGNORE_RESULT(fn) if(fn){}
+#define MAXLINE 1024
 
 
 //==============================================================================
@@ -50,143 +47,227 @@
 //==============================================================================
 
 //******************************************************************************
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelDriverCreate
+
 ANNImplementation::ANNImplementation(
-    KIM_API_model* const pkim,
-    char const* const  parameterFileNames,
-    int const parameterFileNameLength,
-    int const numberParameterFiles,
-    int* const ier)
-    : numberOfSpeciesIndex_(-1),  // initizlize index, pointer, and cached
-      numberOfParticlesIndex_(-1),    // member variables
-      particleSpeciesIndex_(-1),
-      coordinatesIndex_(-1),
-      get_neighIndex_(-1),
-      process_dEdrIndex_(-1),
-      process_d2Edr2Index_(-1),
-      cutoffIndex_(-1),
-      energyIndex_(-1),
-      forcesIndex_(-1),
-      particleEnergyIndex_(-1),
-      numberModelSpecies_(0),
-      numberUniqueSpeciesPairs_(0),
-      cutoffs_(0),
-      cutoffs_samelayer_(0),
-      lj_epsilon_(0),
-      lj_sigma_(0),
-      lj_cutoff_(0),
-			cutoffsSq2D_(0),
-			cutoffsSq2D_samelayer_(0),
-      cachedNumberOfParticles_(0),
-      cachedNumberContributingParticles_(0),
-      numberOfParticles_last_call_(0)
-			// add potential parameters
-
-
+  KIM::ModelDriverCreate* const modelDriverCreate,
+  KIM::LengthUnit const requestedLengthUnit,
+  KIM::EnergyUnit const requestedEnergyUnit,
+  KIM::ChargeUnit const requestedChargeUnit,
+  KIM::TemperatureUnit const requestedTemperatureUnit,
+  KIM::TimeUnit const requestedTimeUnit,
+  int* const ier)
+  : numberModelSpecies_(0),
+  numberUniqueSpeciesPairs_(0),
+  cutoff_(NULL),
+  A_(NULL),
+  B_(NULL),
+  p_(NULL),
+  q_(NULL),
+  sigma_(NULL),
+  lambda_(NULL),
+  gamma_(NULL),
+  costheta0_(NULL),
+  influenceDistance_(0.0),
+  modelWillNotRequestNeighborsOfNoncontributingParticles_(1),
+  cutoffSq_2D_(NULL),
+  A_2D_(NULL),
+  B_2D_(NULL),
+  p_2D_(NULL),
+  q_2D_(NULL),
+  sigma_2D_(NULL),
+  lambda_2D_(NULL),
+  gamma_2D_(NULL),
+  costheta0_2D_(NULL),
+  cachedNumberOfParticles_(0)
 {
-	// create descriptor and network classes
-	descriptor_ = new Descriptor();
-	network_ = new NeuralNetwork();
-
-  *ier = SetConstantValues(pkim);
-  if (*ier < KIM_STATUS_OK) return;
-
-  AllocateFreeParameterMemory();
-
   FILE* parameterFilePointers[MAX_PARAMETER_FILES];
-  *ier = OpenParameterFiles(pkim, parameterFileNames, parameterFileNameLength,
-                            numberParameterFiles, parameterFilePointers);
-  if (*ier < KIM_STATUS_OK) return;
+  int numberParameterFiles;
 
-  *ier = ProcessParameterFiles(pkim, parameterFilePointers, numberParameterFiles);
+  modelDriverCreate->GetNumberOfParameterFiles(&numberParameterFiles);
+  *ier = OpenParameterFiles(modelDriverCreate, numberParameterFiles,
+      parameterFilePointers);
+  if (*ier) {
+    return;
+  }
 
-  CloseParameterFiles(parameterFilePointers, numberParameterFiles);
-  if (*ier < KIM_STATUS_OK) return;
+  *ier = ProcessParameterFiles(modelDriverCreate, numberParameterFiles,
+      parameterFilePointers);
+  CloseParameterFiles(numberParameterFiles, parameterFilePointers);
+  if (*ier) {
+    return;
+  }
 
-  // precompute lookup table
-  descriptor_->create_g4_lookup();
+  *ier = ConvertUnits(modelDriverCreate,
+      requestedLengthUnit,
+      requestedEnergyUnit,
+      requestedChargeUnit,
+      requestedTemperatureUnit,
+      requestedTimeUnit);
+  if (*ier) {
+    return;
+  }
 
-//TODO enable later
-//  *ier = ConvertUnits(pkim);
-//  if (*ier < KIM_STATUS_OK) return;
+  *ier = SetRefreshMutableValues(modelDriverCreate);
+  if (*ier) {
+    return;
+  }
 
-  *ier = SetReinitMutableValues(pkim);
-  if (*ier < KIM_STATUS_OK) return;
+  *ier = RegisterKIMModelSettings(modelDriverCreate);
+  if (*ier) {
+    return;
+  }
 
-  *ier = RegisterKIMParameters(pkim);
-  if (*ier < KIM_STATUS_OK) return;
+  *ier = RegisterKIMParameters(modelDriverCreate);
+  if (*ier) {
+    return;
+  }
 
-  *ier = RegisterKIMFunctions(pkim);
-  if (*ier < KIM_STATUS_OK) return;
+  *ier = RegisterKIMFunctions(modelDriverCreate);
+  if (*ier) {
+    return;
+  }
 
   // everything is good
-  *ier = KIM_STATUS_OK;
+  *ier = false;
   return;
 }
+
 
 //******************************************************************************
 ANNImplementation::~ANNImplementation()
 { // note: it is ok to delete a null pointer and we have ensured that
   // everything is initialized to null
-  Deallocate1DArray(cutoffs_);
-  Deallocate1DArray(cutoffs_samelayer_);
-  Deallocate2DArray(cutoffsSq2D_);
-  Deallocate2DArray(cutoffsSq2D_samelayer_);
+
+  Deallocate1DArray<double>(A_);
+  Deallocate1DArray<double>(B_);
+  Deallocate1DArray<double>(p_);
+  Deallocate1DArray<double>(q_);
+  Deallocate1DArray<double>(sigma_);
+  Deallocate1DArray<double>(lambda_);
+  Deallocate1DArray<double>(gamma_);
+  Deallocate1DArray<double>(costheta0_);
+  Deallocate1DArray<double>(cutoff_);
+
+  Deallocate2DArray<double>(A_2D_);
+  Deallocate2DArray<double>(B_2D_);
+  Deallocate2DArray<double>(p_2D_);
+  Deallocate2DArray<double>(q_2D_);
+  Deallocate2DArray<double>(sigma_2D_);
+  Deallocate2DArray<double>(lambda_2D_);
+  Deallocate2DArray<double>(gamma_2D_);
+  Deallocate2DArray<double>(costheta0_2D_);
+  Deallocate2DArray<double>(cutoffSq_2D_);
 }
 
+
 //******************************************************************************
-int ANNImplementation::Reinit(KIM_API_model* const pkim)
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelRefresh
+
+int ANNImplementation::Refresh(KIM::ModelRefresh* const modelRefresh)
 {
   int ier;
 
-  ier = SetReinitMutableValues(pkim);
-  if (ier < KIM_STATUS_OK) return ier;
+  ier = SetRefreshMutableValues(modelRefresh);
+  if (ier) {
+    return ier;
+  }
 
   // nothing else to do for this case
 
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
 
+
 //******************************************************************************
-int ANNImplementation::Compute(KIM_API_model* const pkim)
+int ANNImplementation::Compute(
+    KIM::ModelCompute const* const modelCompute,
+    KIM::ModelComputeArguments const* const modelComputeArguments)
 {
   int ier;
 
   // KIM API Model Input compute flags
-  bool isComputeProcess_dEdr;
-  bool isComputeProcess_d2Edr2;
+  bool isComputeProcess_dEdr = false;
+  bool isComputeProcess_d2Edr2 = false;
   //
   // KIM API Model Output compute flags
-  bool isComputeEnergy;
-  bool isComputeForces;
-  bool isComputeParticleEnergy;
+  bool isComputeEnergy = false;
+  bool isComputeForces = false;
+  bool isComputeParticleEnergy = false;
+  bool isComputeVirial = false;
+  bool isComputeParticleVirial = false;
   //
   // KIM API Model Input
-  int const* particleSpecies = 0;
-  GetNeighborFunction * get_neigh = 0;
-  VectorOfSizeDIM const* coordinates = 0;
+  int const* particleSpeciesCodes = NULL;
+  int const* particleContributing = NULL;
+  VectorOfSizeDIM const* coordinates = NULL;
   //
   // KIM API Model Output
-  double* energy = 0;
-  double* particleEnergy = 0;
-  VectorOfSizeDIM* forces = 0;
-  ier = SetComputeMutableValues(pkim, isComputeProcess_dEdr,
-                                isComputeProcess_d2Edr2, isComputeEnergy,
-                                isComputeForces, isComputeParticleEnergy,
-                                particleSpecies, get_neigh,
-                                coordinates, energy, particleEnergy, forces);
-  if (ier < KIM_STATUS_OK) return ier;
+  double* energy = NULL;
+  double* particleEnergy = NULL;
+  VectorOfSizeDIM* forces = NULL;
+  VectorOfSizeSix* virial = NULL;
+  VectorOfSizeSix* particleVirial = NULL;
+
+  ier = SetComputeMutableValues(modelComputeArguments,
+      isComputeProcess_dEdr, isComputeProcess_d2Edr2,
+      isComputeEnergy, isComputeForces, isComputeParticleEnergy,
+      isComputeVirial, isComputeParticleVirial,
+      particleSpeciesCodes, particleContributing, coordinates,
+      energy, forces, particleEnergy, virial, particleVirial);
+  if (ier) {
+    return ier;
+  }
 
   // Skip this check for efficiency
   //
-  // ier = CheckParticleSpecies(pkim, particleSpecies);
-  // if (ier < KIM_STATUS_OK) return ier;
+  //ier = CheckParticleSpecies(modelComputeArguments, particleSpeciesCodes);
+  // if (ier) return ier;
 
 
 #include "ANNImplementationComputeDispatch.cpp"
   return ier;
 }
+
+
+//******************************************************************************
+int ANNImplementation::ComputeArgumentsCreate(
+    KIM::ModelComputeArgumentsCreate* const modelComputeArgumentsCreate) const
+{
+  int ier;
+
+  ier = RegisterKIMComputeArgumentsSettings(modelComputeArgumentsCreate);
+  if (ier) {
+    return ier;
+  }
+
+  // nothing else to do for this case
+
+  // everything is good
+  ier = false;
+  return ier;
+}
+
+
+//******************************************************************************
+int ANNImplementation::ComputeArgumentsDestroy(
+    KIM::ModelComputeArgumentsDestroy* const modelComputeArgumentsDestroy)
+const
+{
+  int ier;
+  (void) modelComputeArgumentsDestroy; // avoid not used warning
+
+  // nothing else to do for this case
+
+  // everything is good
+  ier = false;
+  return ier;
+}
+
 
 //==============================================================================
 //
@@ -195,78 +276,71 @@ int ANNImplementation::Compute(KIM_API_model* const pkim)
 //==============================================================================
 
 //******************************************************************************
-int ANNImplementation::SetConstantValues(KIM_API_model* const pkim)
+void ANNImplementation::AllocatePrivateParameterMemory()
 {
-  int ier = KIM_STATUS_FAIL;
-
-  // get baseconvert value from KIM API object
-  baseconvert_ = pkim->get_model_index_shift();
-
-  // obtain indices for various KIM API Object arguments
-  pkim->getm_index(
-      &ier, 3 * 11,
-      "numberOfSpecies",             &numberOfSpeciesIndex_,             1,
-      "numberOfParticles",           &numberOfParticlesIndex_,           1,
-      "particleSpecies",             &particleSpeciesIndex_,             1,
-      "coordinates",                 &coordinatesIndex_,                 1,
-      "get_neigh",                   &get_neighIndex_,                   1,
-      "process_dEdr",                &process_dEdrIndex_,                1,
-      "process_d2Edr2",              &process_d2Edr2Index_,              1,
-      "cutoff",                      &cutoffIndex_,                      1,
-      "energy",                      &energyIndex_,                      1,
-      "forces",                      &forcesIndex_,                      1,
-      "particleEnergy",              &particleEnergyIndex_,              1);
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "getm_index", ier);
-    return ier;
-  }
-
-  // set numberModelSpecies & numberUniqueSpeciesPairs
-  int dummy;
-  ier = pkim->get_num_model_species(&numberModelSpecies_, &dummy);
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "get_num_model_species", ier);
-    return ier;
-  }
-  numberUniqueSpeciesPairs_ = ((numberModelSpecies_+1)*numberModelSpecies_)/2;
-
-  // everything is good
-  ier = KIM_STATUS_OK;
-  return ier;
+  // nothing to do for this case
 }
 
+
 //******************************************************************************
+void ANNImplementation::AllocateParameterMemory()
+{ // allocate memory for data
+  AllocateAndInitialize1DArray<double> (cutoff_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (A_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (B_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (p_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (q_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (sigma_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (lambda_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (gamma_, numberUniqueSpeciesPairs_);
+  AllocateAndInitialize1DArray<double> (costheta0_, numberUniqueSpeciesPairs_);
+
+  AllocateAndInitialize2DArray<double> (cutoffSq_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (A_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (B_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (p_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (q_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (sigma_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (lambda_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (gamma_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (costheta0_2D_, numberModelSpecies_, numberModelSpecies_);
+}
+
+
+//******************************************************************************
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelDriverCreate
+
 int ANNImplementation::OpenParameterFiles(
-    KIM_API_model* const pkim,
-    char const* const parameterFileNames,
-    int const parameterFileNameLength,
+    KIM::ModelDriverCreate* const modelDriverCreate,
     int const numberParameterFiles,
     FILE* parameterFilePointers[MAX_PARAMETER_FILES])
 {
   int ier;
 
-  if (numberParameterFiles > MAX_PARAMETER_FILES)
-  {
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, "ANN given too many"
-                       " parameter files", ier);
+  if (numberParameterFiles > MAX_PARAMETER_FILES) {
+    ier = true;
+    LOG_ERROR("ANN given too many parameter files");
     return ier;
   }
 
-  for (int i = 0; i < numberParameterFiles; ++i)
-  {
-    parameterFilePointers[i]
-        = fopen(&parameterFileNames[i * parameterFileNameLength], "r");
-    if (parameterFilePointers[i] == 0)
-    {
+  for (int i = 0; i < numberParameterFiles; ++i) {
+    std::string const* paramFileName;
+    ier = modelDriverCreate->GetParameterFileName(i, &paramFileName);
+    if (ier) {
+      LOG_ERROR("Unable to get parameter file name");
+      return ier;
+    }
+
+    parameterFilePointers[i] = fopen(paramFileName->c_str(), "r");
+    if (parameterFilePointers[i] == 0) {
       char message[MAXLINE];
       sprintf(message,
-              "ANN parameter file number %d cannot be opened",
-              i);
-      ier = KIM_STATUS_FAIL;
-      pkim->report_error(__LINE__, __FILE__, message, ier);
-      for (int j = i - 1; i <= 0; --i)
-      {
+          "ANN parameter file number %d cannot be opened",
+          i);
+      ier = true;
+      LOG_ERROR(message);
+      for (int j = i - 1; i <= 0; --i) {
         fclose(parameterFilePointers[j]);
       }
       return ier;
@@ -274,817 +348,594 @@ int ANNImplementation::OpenParameterFiles(
   }
 
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
+
 
 //******************************************************************************
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelDriverCreate
+
 int ANNImplementation::ProcessParameterFiles(
-    KIM_API_model* const pkim,
-    FILE* const parameterFilePointers[MAX_PARAMETER_FILES],
-    int const numberParameterFiles)
+    KIM::ModelDriverCreate* const modelDriverCreate,
+    int const numberParameterFiles,
+    FILE* const parameterFilePointers[MAX_PARAMETER_FILES])
 {
-  int ier;
-  //int N;
+  int N, ier;
   int endOfFileFlag = 0;
-  char nextLine[MAXLINE];
-  char errorMsg[MAXLINE];
-  char name[MAXLINE];
-	double cutoff;
-	double cutoff_samelayer;
+  char spec1[MAXLINE], spec2[MAXLINE], nextLine[MAXLINE];
+  int iIndex, jIndex, indx;
+  double next_A, next_B, next_p, next_q, next_sigma, next_lambda, next_gamma;
+  double next_costheta0, next_cutoff;
 
-  // descriptor
-	int numDescTypes;
-	int numDescs;
-	int numParams;
-	int numParamSets;
-	double** descParams = nullptr;
+  (void) numberParameterFiles; // avoid not used warning
 
-  // network
-  int numLayers;
-  int* numPerceptrons;
-
-  //char spec1[MAXLINE], spec2[MAXLINE];
-  //int iIndex, jIndex , indx, iiIndex, jjIndex;
-  //double nextCutoff;
-
-	// cutoff
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%s %lf %lf", name, &cutoff, &cutoff_samelayer);
-  if (ier != 3) {
-    sprintf(errorMsg, "unable to read cutoff from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
+  ier = sscanf(nextLine, "%d", &N);
+  if (ier != 1) {
+    sprintf(nextLine, "unable to read first line of the parameter file");
+    ier = true;
+    LOG_ERROR(nextLine);
     fclose(parameterFilePointers[0]);
     return ier;
   }
+  numberModelSpecies_ = N;
+  numberUniqueSpeciesPairs_ = ((numberModelSpecies_ + 1) * numberModelSpecies_) / 2;
+  AllocateParameterMemory();
 
-  // register cutoff
-  lowerCase(name);
-  if (strcmp(name, "cos") != 0
-      && strcmp(name, "exp") != 0)
+  // set all values of p_ to -1.1e10 for later check that we have read all params
+  for (int i = 0; i < ((N + 1) * N / 2); i++) {
+    p_[i] = -1.1e10;
+  }
+
+  // keep track of known species
+  std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator> modelSpeciesMap;
+  int index = 0;   // species code integer code starting from 0
+
+  // Read and process data lines
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  while (endOfFileFlag == 0)
   {
-    sprintf(errorMsg, "unsupported cutoff type. Expecting `cos', or `exp' "
-        "given %s.\n", name);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-  }
-	descriptor_->set_cutfunc(name);
+    ier = sscanf(nextLine, "%s %s %lg %lg %lg %lg %lg %lg %lg %lg %lg",
+        spec1, spec2, &next_A, &next_B, &next_p, &next_q, &next_sigma,
+        &next_lambda, &next_gamma, &next_costheta0, &next_cutoff);
+    if (ier != 11) {
+      sprintf(nextLine, "error reading lines of the parameter file");
+      LOG_ERROR(nextLine);
+      return true;
+    }
 
-//TODO modifiy this such that each pair has its own cutoff
-// use of numberUniqueSpeciesPairs is not good. Since it requires the Model
-// provide all the params that the Driver supports. number of species should
-// be read in from the input file.
-  for (int i=0; i<numberUniqueSpeciesPairs_; i++) {
-	  cutoffs_[i] = cutoff;
-	  cutoffs_samelayer_[i] = cutoff_samelayer;
-  }
+    // convert species strings to proper type instances
+    KIM::SpeciesName const specName1(spec1);
+    KIM::SpeciesName const specName2(spec2);
+     if ((specName1.String() == "unknown") ||
+         (specName2.String() == "unknown") ) {
+      sprintf(nextLine, "error parameter file: get unknown species");
+      LOG_ERROR(nextLine);
+      return true;
+    }
 
-	// number of descriptor types
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%d", &numDescTypes);
-  if (ier != 1) {
-    sprintf(errorMsg, "unable to read number of descriptor types from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
 
-  // descriptor
-  for (int i=0; i<numDescTypes; i++) {
-    // descriptor name and parameter dimensions
+    // check for new species
+    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
+    const_iterator iIter = modelSpeciesMap.find(specName1);
+    if (iIter == modelSpeciesMap.end()) {
+      modelSpeciesMap[specName1] = index;
+      modelSpeciesCodeList_.push_back(index);
+
+      ier = modelDriverCreate->SetSpeciesCode(specName1, index);
+      if (ier) {
+        return ier;
+      }
+      iIndex = index;
+      index++;
+    }
+    else {
+      iIndex = modelSpeciesMap[specName1];
+    }
+
+    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
+    const_iterator jIter = modelSpeciesMap.find(specName2);
+    if (jIter == modelSpeciesMap.end()) {
+      modelSpeciesMap[specName2] = index;
+      modelSpeciesCodeList_.push_back(index);
+
+      ier = modelDriverCreate->SetSpeciesCode(specName2, index);
+      if (ier) {
+        return ier;
+      }
+      jIndex = index;
+      index++;
+    }
+    else {
+      jIndex = modelSpeciesMap[specName2];
+    }
+
+    if (iIndex >= jIndex) {
+      indx = jIndex * N + iIndex - (jIndex * jIndex + jIndex) / 2;
+    }
+    else {
+      indx = iIndex * N + jIndex - (iIndex * iIndex + iIndex) / 2;
+    }
+    A_[indx] = next_A;
+    B_[indx] = next_B;
+    p_[indx] = next_p;
+    q_[indx] = next_q;
+    sigma_[indx] = next_sigma;
+    lambda_[indx] = next_lambda;
+    gamma_[indx] = next_gamma;
+    costheta0_[indx] = next_costheta0;
+    cutoff_[indx] = next_cutoff;
+
     getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  }
 
-    // name of descriptor
-    ier = sscanf(nextLine, "%s", name);
-    if (ier != 1) {
-      sprintf(errorMsg, "unable to read descriptor from line:\n");
-      strcat(errorMsg, nextLine);
-      ier = KIM_STATUS_FAIL;
-      pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-      fclose(parameterFilePointers[0]);
-      return ier;
-    }
-    lowerCase(name); // change to lower case name
-    if (strcmp(name, "g1") == 0) {  // G1
-      descriptor_->add_descriptor(name, nullptr, 1, 0);
-    }
-    else{
-      // re-read name, and read number of param sets and number of params
-      ier = sscanf(nextLine, "%s %d %d", name, &numParamSets, &numParams);
-      if (ier != 3) {
-        sprintf(errorMsg, "unable to read descriptor from line:\n");
-        strcat(errorMsg, nextLine);
-        ier = KIM_STATUS_FAIL;
-        pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-        fclose(parameterFilePointers[0]);
-        return ier;
-      }
-      // change name to lower case
-      lowerCase(name);
-
-      // check size of params is correct w.r.t its name
-      if (strcmp(name, "g2") == 0) {
-        if (numParams != 2) {
-          sprintf(errorMsg, "number of params for descriptor G2 is incorrect, "
-              "expecting 2, but given %d.\n", numParams);
-          ier = KIM_STATUS_FAIL;
-          pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-          fclose(parameterFilePointers[0]);
-          return ier;
-        }
-      }
-      else if (strcmp(name, "g3") == 0) {
-        if (numParams != 1) {
-          sprintf(errorMsg, "number of params for descriptor G3 is incorrect, "
-              "expecting 1, but given %d.\n", numParams);
-          ier = KIM_STATUS_FAIL;
-          pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-          fclose(parameterFilePointers[0]);
-          return ier;
-        }
-      }
-      else if (strcmp(name, "g4") == 0) {
-        if (numParams != 3) {
-          sprintf(errorMsg, "number of params for descriptor G4 is incorrect, "
-              "expecting 3, but given %d.\n", numParams);
-          ier = KIM_STATUS_FAIL;
-          pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-          fclose(parameterFilePointers[0]);
-          return ier;
-        }
-      }
-      else if (strcmp(name, "g5") == 0) {
-        if (numParams != 3) {
-          sprintf(errorMsg, "number of params for descriptor G5 is incorrect, "
-              "expecting 3, but given %d.\n", numParams);
-          ier = KIM_STATUS_FAIL;
-          pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-          fclose(parameterFilePointers[0]);
-          return ier;
-        }
-      }
-      else {
-        sprintf(errorMsg, "unsupported descriptor `%s' from line:\n", name);
-        strcat(errorMsg, nextLine);
-        ier = KIM_STATUS_FAIL;
-        pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-        fclose(parameterFilePointers[0]);
-        return ier;
-      }
-
-      // read descriptor params
-      AllocateAndInitialize2DArray(descParams, numParamSets, numParams);
-      for (int j=0; j<numParamSets; j++) {
-        getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-        ier = getXdouble(nextLine, numParams, descParams[j]);
-        if (ier != KIM_STATUS_OK) {
-          sprintf(errorMsg, "unable to read descriptor parameters from line:\n");
-          strcat(errorMsg, nextLine);
-          ier = KIM_STATUS_FAIL;
-          pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-          fclose(parameterFilePointers[0]);
-          return ier;
-        }
-      }
-
-      // copy data to Descriptor
-      descriptor_->add_descriptor(name, descParams, numParamSets, numParams);
-      Deallocate2DArray(descParams);
+  // check we have read all parameters
+  for (int i = 0; i < ((N + 1) * N / 2); i++) {
+    if (p_[i] < -1e10) {
+      sprintf(nextLine, "error: not enough parameter data.\n");
+      sprintf(nextLine, "%d species requires %d data lines.", N, (N + 1) * N / 2);
+      LOG_ERROR(nextLine);
+      return true;
     }
   }
-  // number of descriptors
-  numDescs = descriptor_->get_num_descriptors();
-
-
-  // centering and normalizing params
-  // flag, whether we use this feature
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%*s %s", name);
-  if (ier != 1) {
-    sprintf(errorMsg, "unable to read centering and normalization info from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
-  lowerCase(name);
-  bool do_center_and_normalize;
-  if (strcmp(name, "true") == 0) {
-    do_center_and_normalize = true;
-  } else {
-    do_center_and_normalize = false;
-  }
-
-  int size=0;
-  double* means = nullptr;
-  double* stds = nullptr;
-  if (do_center_and_normalize)
-  {
-    // size of the data, this should be equal to numDescs
-    getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-    ier = sscanf(nextLine, "%d", &size);
-    if (ier != 1) {
-      sprintf(errorMsg, "unable to read the size of centering and normalization "
-          "data info from line:\n");
-      strcat(errorMsg, nextLine);
-      ier = KIM_STATUS_FAIL;
-      pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-      fclose(parameterFilePointers[0]);
-      return ier;
-    }
-    if (size != numDescs) {
-      sprintf(errorMsg, "Size of centering and normalizing data inconsistent with "
-          "the number of descriptors. Size = %d, num_descriptors=%d\n", size, numDescs);
-      ier = KIM_STATUS_FAIL;
-      pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-      fclose(parameterFilePointers[0]);
-    }
-
-    // read means
-    AllocateAndInitialize1DArray(means, size);
-    for (int i=0; i<size; i++) {
-      getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-      ier = sscanf(nextLine, "%lf", &means[i]);
-      if (ier != 1) {
-        sprintf(errorMsg, "unable to read `means' from line:\n");
-        strcat(errorMsg, nextLine);
-        ier = KIM_STATUS_FAIL;
-        pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-        fclose(parameterFilePointers[0]);
-        return ier;
-      }
-    }
-
-    // read standard deviations
-    AllocateAndInitialize1DArray(stds, size);
-    for (int i=0; i<size; i++) {
-      getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-      ier = sscanf(nextLine, "%lf", &stds[i]);
-      if (ier != 1) {
-        sprintf(errorMsg, "unable to read `means' from line:\n");
-        strcat(errorMsg, nextLine);
-        ier = KIM_STATUS_FAIL;
-        pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-        fclose(parameterFilePointers[0]);
-        return ier;
-      }
-    }
-  }
-
-  // store info into descriptor class
-	descriptor_->set_center_and_normalize(do_center_and_normalize, size, means, stds);
-  Deallocate1DArray(means);
-  Deallocate1DArray(stds);
-
-
-//TODO delete
-//  descriptor_->echo_input();
-
-
-  // network structure
-  // number of layers
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%d", &numLayers);
-  if (ier != 1) {
-    sprintf(errorMsg, "unable to read number of layers from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
-
-  // number of perceptrons in each layer
-  numPerceptrons = new int[numLayers];
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = getXint(nextLine, numLayers, numPerceptrons);
-  if (ier != KIM_STATUS_OK) {
-    sprintf(errorMsg, "unable to read number of perceptrons from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
-
-  // copy to network class
-  network_->set_nn_structure(numDescs, numLayers, numPerceptrons);
-
-
-  // activation function
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%s", name);
-  if (ier != 1) {
-    sprintf(errorMsg, "unable to read `activation function` from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
-
-  // register activation function
-  lowerCase(name);
-  if (strcmp(name, "sigmoid") != 0
-      && strcmp(name, "tanh") != 0
-      && strcmp(name, "relu") != 0
-      && strcmp(name, "elu") != 0)
-  {
-    sprintf(errorMsg, "unsupported activation function. Expecting `sigmoid`, `tanh` "
-        " `relu` or `elu`, given %s.\n", name);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-  }
-  network_->set_activation(name);
-
-
-  // keep probability
-  double* keep_prob;
-  AllocateAndInitialize1DArray(keep_prob, numLayers);
-
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = getXdouble(nextLine, numLayers, keep_prob);
-  if (ier != KIM_STATUS_OK) {
-    sprintf(errorMsg, "unable to read `keep probability` from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
-  network_->set_keep_prob(keep_prob);
-  Deallocate1DArray(keep_prob);
-
-
-  // weights and biases
-  for (int i=0; i<numLayers; i++) {
-
-    double** weight;
-	  double* bias;
-    int row;
-    int col;
-
-    if (i==0) {
-      row = numDescs;
-      col = numPerceptrons[i];
-    } else {
-      row = numPerceptrons[i-1];
-      col = numPerceptrons[i];
-    }
-
-    AllocateAndInitialize2DArray(weight, row, col);
-    for (int j=0; j<row; j++) {
-      getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-      ier = getXdouble(nextLine, col, weight[j]);
-      if (ier != KIM_STATUS_OK) {
-        sprintf(errorMsg, "unable to read `weight` from line:\n");
-        strcat(errorMsg, nextLine);
-        ier = KIM_STATUS_FAIL;
-        pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-        fclose(parameterFilePointers[0]);
-        return ier;
-      }
-    }
-
-    // bias
-    AllocateAndInitialize1DArray(bias, col);
-    getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-    ier = getXdouble(nextLine, col, bias);
-    if (ier != KIM_STATUS_OK) {
-      sprintf(errorMsg, "unable to read `bias` from line:\n");
-      strcat(errorMsg, nextLine);
-      ier = KIM_STATUS_FAIL;
-      pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-      fclose(parameterFilePointers[0]);
-      return ier;
-    }
-
-    // copy to network class
-    network_->add_weight_bias(weight, bias, i);
-
-    Deallocate2DArray(weight);
-    Deallocate1DArray(bias);
-  }
-
-  delete [] numPerceptrons;
-
-//TODO delete
-//  network_->echo_input();
-
-
-  // lj parameters
-  getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%lf %lf %lf", &lj_epsilon_, &lj_sigma_, &lj_cutoff_);
-  if (ier != 3) {
-    sprintf(errorMsg, "unable to lj parameters from line:\n");
-    strcat(errorMsg, nextLine);
-    ier = KIM_STATUS_FAIL;
-    pkim->report_error(__LINE__, __FILE__, errorMsg, ier);
-    fclose(parameterFilePointers[1]);
-    return ier;
-  }
-
 
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
+
 
 //******************************************************************************
 void ANNImplementation::getNextDataLine(
     FILE* const filePtr, char* nextLinePtr, int const maxSize,
-    int *endOfFileFlag)
+    int* endOfFileFlag)
 {
-  char* pch;
-
   do
   {
-    if(fgets(nextLinePtr, maxSize, filePtr) == NULL)
-    {
-       *endOfFileFlag = 1;
-       break;
+    if (fgets(nextLinePtr, maxSize, filePtr) == NULL) {
+      *endOfFileFlag = 1;
+      break;
     }
+
     while ((nextLinePtr[0] == ' ' || nextLinePtr[0] == '\t') ||
-           (nextLinePtr[0] == '\n' || nextLinePtr[0] == '\r' ))
+           (nextLinePtr[0] == '\n' || nextLinePtr[0] == '\r'))
     {
       nextLinePtr = (nextLinePtr + 1);
     }
-  }
-  while ((strncmp("#", nextLinePtr, 1) == 0) || (strlen(nextLinePtr) == 0));
-
-  // remove comments starting with `#' in a line
-  pch = strchr(nextLinePtr, '#');
-  if (pch != NULL) {
-    *pch = '\0';
-  }
-
+  } while ((strncmp("#", nextLinePtr, 1) == 0) || (strlen(nextLinePtr) == 0));
 }
 
-//******************************************************************************
-int ANNImplementation::getXdouble(char* linePtr, const int N, double* list)
-{
-  int ier;
-  char * pch;
-  char line[MAXLINE];
-  int i = 0;
-
-  strcpy(line, linePtr);
-  pch = strtok(line, " \t\n\r");
-  while (pch != NULL) {
-    ier = sscanf(pch, "%lf", &list[i]);
-    if (ier != 1) {
-      ier = KIM_STATUS_FAIL;
-      return ier;
-    }
-    pch = strtok(NULL, " \t\n\r");
-    i += 1;
-  }
-  if (i != N) {
-    ier = KIM_STATUS_FAIL;
-    return ier;
-  }
-
-  ier = KIM_STATUS_OK;
-  return ier;
-}
-
-
-//******************************************************************************
-int ANNImplementation::getXint(char* linePtr, const int N, int* list)
-{
-  int ier;
-  char * pch;
-  char line[MAXLINE];
-  int i = 0;
-
-  strcpy(line, linePtr);
-  pch = strtok(line, " \t\n\r");
-  while (pch != NULL) {
-    ier = sscanf(pch, "%d", &list[i]);
-    if (ier != 1) {
-      ier = KIM_STATUS_FAIL;
-      return ier;
-    }
-    pch = strtok(NULL, " \t\n\r");
-    i += 1;
-  }
-  if (i != N) {
-    ier = KIM_STATUS_FAIL;
-    return ier;
-  }
-
-  ier = KIM_STATUS_OK;
-  return ier;
-}
-
-//******************************************************************************
-void ANNImplementation::lowerCase(char* linePtr)
-{
-  for(int i=0; linePtr[i]; i++){
-    linePtr[i] = tolower(linePtr[i]);
-  }
-}
 
 //******************************************************************************
 void ANNImplementation::CloseParameterFiles(
-    FILE* const parameterFilePointers[MAX_PARAMETER_FILES],
-    int const numberParameterFiles)
+    int const numberParameterFiles,
+    FILE* const parameterFilePointers[MAX_PARAMETER_FILES])
 {
-  for (int i = 0; i < numberParameterFiles; ++i)
+  for (int i = 0; i < numberParameterFiles; ++i) {
     fclose(parameterFilePointers[i]);
+  }
 }
 
-//******************************************************************************
-void ANNImplementation::AllocateFreeParameterMemory()
-{ // allocate memory for data
-  AllocateAndInitialize1DArray(cutoffs_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray(cutoffs_samelayer_, numberUniqueSpeciesPairs_);
-	AllocateAndInitialize2DArray(cutoffsSq2D_, numberModelSpecies_, numberModelSpecies_);
-	AllocateAndInitialize2DArray(cutoffsSq2D_samelayer_, numberModelSpecies_, numberModelSpecies_);
-}
 
 //******************************************************************************
-int ANNImplementation::ConvertUnits(KIM_API_model* const pkim)
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelDriverCreate
+
+int ANNImplementation::ConvertUnits(
+    KIM::ModelDriverCreate* const modelDriverCreate,
+    KIM::LengthUnit const requestedLengthUnit,
+    KIM::EnergyUnit const requestedEnergyUnit,
+    KIM::ChargeUnit const requestedChargeUnit,
+    KIM::TemperatureUnit const requestedTemperatureUnit,
+    KIM::TimeUnit const requestedTimeUnit)
 {
   int ier;
 
   // define default base units
-/*  char length[] = "A";
-  char energy[] = "eV";
-  char charge[] = "e";
-  char temperature[] = "K";
-  char time[] = "ps";
-*/
+  KIM::LengthUnit fromLength = KIM::LENGTH_UNIT::A;
+  KIM::EnergyUnit fromEnergy = KIM::ENERGY_UNIT::eV;
+  KIM::ChargeUnit fromCharge = KIM::CHARGE_UNIT::e;
+  KIM::TemperatureUnit fromTemperature = KIM::TEMPERATURE_UNIT::K;
+  KIM::TimeUnit fromTime = KIM::TIME_UNIT::ps;
 
-/*
-  // changing units of cutoffs and sigmas
-  double const convertLength
-      = pkim->convert_to_act_unit(length, energy, charge, temperature, time,
-                                  1.0, 0.0, 0.0, 0.0, 0.0, &ier);
-  if (ier < KIM_STATUS_OK)
-  {
-    pkim->report_error(__LINE__, __FILE__, "convert_to_act_unit", ier);
+  // changing units of sigma, gamma, and cutoff
+  double convertLength = 1.0;
+
+  ier = modelDriverCreate->ConvertUnit(
+      fromLength, fromEnergy, fromCharge, fromTemperature, fromTime,
+      requestedLengthUnit, requestedEnergyUnit, requestedChargeUnit,
+      requestedTemperatureUnit, requestedTimeUnit,
+      1.0, 0.0, 0.0, 0.0, 0.0,
+      &convertLength);
+  if (ier) {
+    LOG_ERROR("Unable to convert length unit");
     return ier;
   }
-  if (convertLength != ONE)
-  {
-    for (int i = 0; i < numberUniqueSpeciesPairs_; ++i)
-    {
-      cutoffs_[i] *= cutoffs_[i];  // convert to active units
-      sigmas_[i] *= sigmas_[i];  // convert to active units
-    }
-  }
-  // changing units of epsilons
-  double const convertEnergy
-      = pkim->convert_to_act_unit(length, energy, charge, temperature, time,
-                                  0.0, 1.0, 0.0, 0.0, 0.0, &ier);
-  if (ier < KIM_STATUS_OK)
-  {
-    pkim->report_error(__LINE__, __FILE__, "convert_to_act_unit", ier);
-    return ier;
-  }
-  if (convertEnergy != ONE)
-  {
-    for (int i = 0; i < numberUniqueSpeciesPairs_; ++i)
-    {
-      epsilons_[i] *= convertEnergy;  // convert to active units
+  // convert to active units
+  if (convertLength != ONE) {
+    for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
+      sigma_[i] *= convertLength;
+      gamma_[i] *= convertLength;
+      cutoff_[i] *= convertLength;
     }
   }
 
-*/
+  // changing units of A and lambda
+  double convertEnergy = 1.0;
+  ier = modelDriverCreate->ConvertUnit(
+      fromLength, fromEnergy, fromCharge, fromTemperature, fromTime,
+      requestedLengthUnit, requestedEnergyUnit, requestedChargeUnit,
+      requestedTemperatureUnit, requestedTimeUnit,
+      0.0, 1.0, 0.0, 0.0, 0.0,
+      &convertEnergy);
+  if (ier) {
+    LOG_ERROR("Unable to convert energy unit");
+    return ier;
+  }
+  // convert to active units
+  if (convertLength != ONE) {
+    for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
+      A_[i] *= convertEnergy;
+      lambda_[i] *= convertEnergy;
+    }
+  }
+
+  // register units
+  ier = modelDriverCreate->SetUnits(
+      requestedLengthUnit,
+      requestedEnergyUnit,
+      KIM::CHARGE_UNIT::unused,
+      KIM::TEMPERATURE_UNIT::unused,
+      KIM::TIME_UNIT::unused);
+  if (ier) {
+    LOG_ERROR("Unable to set units to requested values");
+    return ier;
+  }
 
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
+
 
 //******************************************************************************
-int ANNImplementation::RegisterKIMParameters(
-    KIM_API_model* const pkim) const
+int ANNImplementation::RegisterKIMModelSettings(
+    KIM::ModelDriverCreate* const modelDriverCreate) const
 {
-  int ier;
+  // register numbering
+  int error = modelDriverCreate->SetModelNumbering(KIM::NUMBERING::zeroBased);
 
-  // publish parameters
-/*  pkim->setm_data(&ier, 1 * 4,
-                  //
-                  "PARAM_FREE_cutoffs",
-                  numberUniqueSpeciesPairs_,
-                  (void*) cutoffs_,
-                  1);
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "setm_data", ier);
+  return error;
+}
+
+
+//******************************************************************************
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelComputeArgumentsCreate
+
+int ANNImplementation::RegisterKIMComputeArgumentsSettings(
+    KIM::ModelComputeArgumentsCreate* const modelComputeArgumentsCreate) const
+{
+  // register arguments
+  LOG_INFORMATION("Register argument supportStatus");
+
+  int error =
+    modelComputeArgumentsCreate->SetArgumentSupportStatus(
+        KIM::COMPUTE_ARGUMENT_NAME::partialEnergy,
+        KIM::SUPPORT_STATUS::optional) ||
+    modelComputeArgumentsCreate->SetArgumentSupportStatus(
+        KIM::COMPUTE_ARGUMENT_NAME::partialForces,
+        KIM::SUPPORT_STATUS::optional) ||
+    modelComputeArgumentsCreate->SetArgumentSupportStatus(
+        KIM::COMPUTE_ARGUMENT_NAME::partialParticleEnergy,
+        KIM::SUPPORT_STATUS::optional) ||
+    modelComputeArgumentsCreate->SetArgumentSupportStatus(
+        KIM::COMPUTE_ARGUMENT_NAME::partialVirial,
+        KIM::SUPPORT_STATUS::optional) ||
+    modelComputeArgumentsCreate->SetArgumentSupportStatus(
+        KIM::COMPUTE_ARGUMENT_NAME::partialParticleVirial,
+        KIM::SUPPORT_STATUS::optional);
+
+  // register callbacks
+  LOG_INFORMATION("Register callback supportStatus");
+  error =
+    error ||
+    modelComputeArgumentsCreate->SetCallbackSupportStatus(
+        KIM::COMPUTE_CALLBACK_NAME::ProcessDEDrTerm,
+        KIM::SUPPORT_STATUS::optional) ||
+    modelComputeArgumentsCreate->SetCallbackSupportStatus(
+        KIM::COMPUTE_CALLBACK_NAME::ProcessD2EDr2Term,
+        KIM::SUPPORT_STATUS::optional);
+
+  return error;
+}
+
+
+//******************************************************************************
+// helper macro
+#define SNUM( x  ) static_cast<std::ostringstream &>(    \
+    std::ostringstream() << std::dec << x).str()
+
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelDriverCreate
+
+int ANNImplementation::RegisterKIMParameters(
+    KIM::ModelDriverCreate* const modelDriverCreate)
+{
+  int ier = false;
+
+  // publish parameters (order is important)
+  ier =
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, A_, "A",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, B_, "B",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, p_, "p",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, q_, "q",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, sigma_, "sigma",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, lambda_, "lambda",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).  "
+        "This three-body parameter internally follows the mixing rule: "
+        "lambda_ijk = sqrt(lambda_ij*lambda_ik).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, gamma_, "gamma",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, costheta0_, "costheta0",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).  This parameter is not internally mixed.") ||
+    modelDriverCreate->SetParameterPointer(
+        numberUniqueSpeciesPairs_, cutoff_, "cutoff",
+        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
+        "in row-major storage.  Ordering is according to SpeciesCode values.  "
+        "For example, to find the parameter related to SpeciesCode 'i' and "
+        "SpeciesCode 'j' (i <= j), use (zero-based) "
+        "index = (i*N + j - (i*i + i)/2).");
+  if (ier) {
+    LOG_ERROR("set_parameters");
     return ier;
   }
-*/
+
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
+
 
 //******************************************************************************
 int ANNImplementation::RegisterKIMFunctions(
-    KIM_API_model* const pkim)
-    const
+    KIM::ModelDriverCreate* const modelDriverCreate)
+const
 {
+  int error;
+
+  // register the Destroy(), Refresh(), and Compute() functions
+  error =
+    modelDriverCreate->SetDestroyPointer(
+        KIM::LANGUAGE_NAME::cpp,
+        (KIM::Function*)&(ANN::Destroy)) ||
+    modelDriverCreate->SetRefreshPointer(
+        KIM::LANGUAGE_NAME::cpp,
+        (KIM::Function*)&(ANN::Refresh)) ||
+    modelDriverCreate->SetComputePointer(
+        KIM::LANGUAGE_NAME::cpp,
+        (KIM::Function*)&(ANN::Compute)) ||
+    modelDriverCreate->SetComputeArgumentsCreatePointer(
+        KIM::LANGUAGE_NAME::cpp,
+        (KIM::Function*)&(ANN::ComputeArgumentsCreate)) ||
+    modelDriverCreate->SetComputeArgumentsDestroyPointer(
+        KIM::LANGUAGE_NAME::cpp,
+        (KIM::Function*)&(ANN::ComputeArgumentsDestroy));
+
+  return error;
+}
+
+
+//******************************************************************************
+template<class ModelObj>
+int ANNImplementation::SetRefreshMutableValues(
+    ModelObj* const modelObj)
+{ // use (possibly) new values of parameters to compute other quantities
+  // NOTE: This function is templated because it's called with both a
+  //       modelDriverCreate object during initialization and with a
+  //       modelRefresh object when the Model's parameters have been altered
   int ier;
 
-  // register the destroy() and reinit() functions
-  pkim->setm_method(&ier, 3 * 4,
-                    "destroy", 1, (func_ptr) &(ANN::Destroy), 1,
-                    "reinit",  1, (func_ptr) &(ANN::Reinit),  1,
-                    "compute", 1, (func_ptr) &(ANN::Compute), 1);
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "setm_method", ier);
-    return ier;
+  // update parameters
+  for (int i = 0; i < numberModelSpecies_; ++i) {
+    for (int j = 0; j <= i; ++j) {
+      int const index = j * numberModelSpecies_ + i - (j * j + j) / 2;
+      A_2D_[i][j] = A_2D_[j][i] = A_[index];
+      B_2D_[i][j] = B_2D_[j][i] = B_[index];
+      p_2D_[i][j] = p_2D_[j][i] = p_[index];
+      q_2D_[i][j] = q_2D_[j][i] = q_[index];
+      sigma_2D_[i][j] = sigma_2D_[j][i] = sigma_[index];
+      lambda_2D_[i][j] = lambda_2D_[j][i] = lambda_[index];
+      gamma_2D_[i][j] = gamma_2D_[j][i] = gamma_[index];
+      costheta0_2D_[i][j] = costheta0_2D_[j][i] = costheta0_[index];
+      cutoffSq_2D_[i][j] = cutoffSq_2D_[j][i] = cutoff_[index] * cutoff_[index];
+    }
   }
 
+  // update cutoff value in KIM API object
+  influenceDistance_ = 0.0;
+
+  for (int i = 0; i < numberModelSpecies_; i++) {
+    int indexI = modelSpeciesCodeList_[i];
+
+    for (int j = 0; j < numberModelSpecies_; j++) {
+      int indexJ = modelSpeciesCodeList_[j];
+
+      if (influenceDistance_ < cutoffSq_2D_[indexI][indexJ]) {
+        influenceDistance_ = cutoffSq_2D_[indexI][indexJ];
+      }
+    }
+  }
+
+  influenceDistance_ = sqrt(influenceDistance_);
+  modelObj->SetInfluenceDistancePointer(&influenceDistance_);
+  modelObj->SetNeighborListPointers(1,
+      &influenceDistance_, &modelWillNotRequestNeighborsOfNoncontributingParticles_);
+
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
 
-//******************************************************************************
-int ANNImplementation::SetReinitMutableValues(
-    KIM_API_model* const pkim)
-{ // use (possibly) new values of free parameters to compute other quantities
-  int ier;
-
-	// update cutoffsSq (This requires PECIES_001_NAME_STR needs to have code 0,
-	// SPECIES_002_NAME_STR needs to have code 1 ... in .kim file)
-	for (int i = 0; i < numberModelSpecies_; ++i) {
-		for (int j = 0; j <= i ; ++j) {
-			int const index = j*numberModelSpecies_ + i - (j*j + j)/2;
-			cutoffsSq2D_[i][j] = cutoffsSq2D_[j][i] = (cutoffs_[index]*cutoffs_[index]);
-			cutoffsSq2D_samelayer_[i][j] = cutoffsSq2D_samelayer_[j][i] =
-          (cutoffs_samelayer_[index]*cutoffs_samelayer_[index]);
-		}
-	}
-
-  // get cutoff pointer
-  double* const cutoff
-      = static_cast<double*>(pkim->get_data_by_index(cutoffIndex_, &ier));
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "get_data_by_index", ier);
-    return ier;
-  }
-
-	// update cutoff value in KIM API object
-	*cutoff = 0;
-	int numberSpecies, maxStringLength;
-	ier = pkim->get_num_sim_species(&numberSpecies, &maxStringLength);
-	if (ier < KIM_STATUS_OK) {
-		pkim->report_error(__LINE__, __FILE__, "get_num_sim_species", ier);
-		return ier;
-	}
-
-	// find the largest cutoff of a subset of all the supported species of the model
-	const char* simSpeciesI;
-	const char* simSpeciesJ;
-	for (int i = 0; i < numberSpecies; i++) {
-		ier = pkim->get_sim_species(i, &simSpeciesI);
-		if (ier < KIM_STATUS_OK) {
-			pkim->report_error(__LINE__, __FILE__, "get_num_sim_species", ier);
-			return ier;
-		}
-		int const indexI = pkim->get_species_code(simSpeciesI, &ier);
-		if (indexI >= numberModelSpecies_ || ier<KIM_STATUS_OK ) {
-			pkim->report_error(__LINE__, __FILE__, "get_species_code",
-					KIM_STATUS_FAIL);
-			return KIM_STATUS_FAIL;
-		}
-
-		for (int j = 0; j < numberSpecies; j++) {
-			ier = pkim->get_sim_species( j, &simSpeciesJ);
-			if (ier < KIM_STATUS_OK) {
-				pkim->report_error(__LINE__, __FILE__, "get_num_sim_species", ier);
-				return ier;
-			}
-			int const indexJ = pkim->get_species_code(simSpeciesJ, &ier);
-			if (indexJ >= numberModelSpecies_ || ier<KIM_STATUS_OK ) {
-				pkim->report_error(__LINE__, __FILE__, "get_species_code",
-						KIM_STATUS_FAIL);
-				return KIM_STATUS_FAIL;
-			}
-			if (*cutoff < cutoffsSq2D_[indexI][indexJ]) {
-				*cutoff = cutoffsSq2D_[indexI][indexJ];
-			}
-		}
-	}
-	*cutoff = sqrt(*cutoff);
-
-  // compare with lj cutoff
-  if(*cutoff < lj_cutoff_) {
-    *cutoff = lj_cutoff_;
-  }
-
-
-  // everything is good
-  ier = KIM_STATUS_OK;
-  return ier;
-}
 
 //******************************************************************************
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelComputeArguments
+
 int ANNImplementation::SetComputeMutableValues(
-    KIM_API_model* const pkim,
+    KIM::ModelComputeArguments const* const modelComputeArguments,
     bool& isComputeProcess_dEdr,
     bool& isComputeProcess_d2Edr2,
     bool& isComputeEnergy,
     bool& isComputeForces,
     bool& isComputeParticleEnergy,
-    int const*& particleSpecies,
-    GetNeighborFunction *& get_neigh,
+    bool& isComputeVirial,
+    bool& isComputeParticleVirial,
+    int const*& particleSpeciesCodes,
+    int const*& particleContributing,
     VectorOfSizeDIM const*& coordinates,
     double*& energy,
+    VectorOfSizeDIM*& forces,
     double*& particleEnergy,
-    VectorOfSizeDIM*& forces)
+    VectorOfSizeSix*& virial,
+    VectorOfSizeSix*& particleVirial)
 {
-  int ier = KIM_STATUS_FAIL;
+  int ier = true;
 
-	// get compute flags
-  int compEnergy;
-  int compForces;
-  int compParticleEnergy;
+  // get compute flags
   int compProcess_dEdr;
   int compProcess_d2Edr2;
-  pkim->getm_compute_by_index(&ier, 3 * 5,
-                              energyIndex_,         &compEnergy,         1,
-                              forcesIndex_,         &compForces,         1,
-                              particleEnergyIndex_, &compParticleEnergy, 1,
-                              process_dEdrIndex_,   &compProcess_dEdr,   1,
-                              process_d2Edr2Index_, &compProcess_d2Edr2, 1);
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "getm_compute_by_index", ier);
-    return ier;
-  }
 
-  isComputeEnergy = (compEnergy == KIM_COMPUTE_TRUE);
-  isComputeForces = (compForces == KIM_COMPUTE_TRUE);
-  isComputeParticleEnergy = (compParticleEnergy == KIM_COMPUTE_TRUE);
-  isComputeProcess_dEdr = (compProcess_dEdr == KIM_COMPUTE_TRUE);
-  isComputeProcess_d2Edr2 = (compProcess_d2Edr2 == KIM_COMPUTE_TRUE);
+  modelComputeArguments->IsCallbackPresent(
+      KIM::COMPUTE_CALLBACK_NAME::ProcessDEDrTerm,
+      &compProcess_dEdr);
+  modelComputeArguments->IsCallbackPresent(
+      KIM::COMPUTE_CALLBACK_NAME::ProcessD2EDr2Term,
+      &compProcess_d2Edr2);
 
-  // extract pointers based on compute flags
+  isComputeProcess_dEdr = compProcess_dEdr;
+  isComputeProcess_d2Edr2 = compProcess_d2Edr2;
+
   int const* numberOfParticles;
-  pkim->getm_data_by_index(
-      &ier, 3 * 6,
-      numberOfParticlesIndex_, &numberOfParticles, 1,
-      particleSpeciesIndex_,	 &particleSpecies,	 1,
-      coordinatesIndex_,			 &coordinates,			 1,
-      energyIndex_,						 &energy,						 compEnergy,
-      particleEnergyIndex_,		 &particleEnergy,		 compParticleEnergy,
-      forcesIndex_,						 &forces,						 compForces);
-  if (ier < KIM_STATUS_OK) {
-    pkim->report_error(__LINE__, __FILE__, "getm_data_by_index", ier);
+  ier =
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::numberOfParticles,
+        &numberOfParticles) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::particleSpeciesCodes,
+        &particleSpeciesCodes) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::particleContributing,
+        &particleContributing) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::coordinates,
+        (double const** const)&coordinates) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::partialEnergy,
+        &energy) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::partialForces,
+        (double const** const)&forces) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::partialParticleEnergy,
+        &particleEnergy) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::partialVirial,
+        (double const** const)&virial) ||
+    modelComputeArguments->GetArgumentPointer(
+        KIM::COMPUTE_ARGUMENT_NAME::partialParticleVirial,
+        (double const** const)&particleVirial);
+  if (ier) {
+    LOG_ERROR("GetArgumentPointer");
     return ier;
   }
 
-	// get neigh function
-	get_neigh = (GetNeighborFunction *) pkim->get_method_by_index(get_neighIndex_, &ier);
-	if (ier < KIM_STATUS_OK) {
-		pkim->report_error(__LINE__, __FILE__, "get_method_by_index", ier);
-		return ier;
-	}
+  isComputeEnergy = (energy != NULL);
+  isComputeForces = (forces != NULL);
+  isComputeParticleEnergy = (particleEnergy != NULL);
+  isComputeVirial = (virial != NULL);
+  isComputeParticleVirial = (particleVirial != NULL);
 
   // update values
   cachedNumberOfParticles_ = *numberOfParticles;
 
-	// set so that it can be used even with a full neighbor list
-	cachedNumberContributingParticles_ = *numberOfParticles;
-
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
 
+
 //******************************************************************************
-int ANNImplementation::CheckParticleSpecies(
-    KIM_API_model* const pkim,
-    int const* const particleSpecies)
-    const
+// Assume that the particle species interge code starts from 0
+#undef  KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelCompute
+
+int ANNImplementation::CheckParticleSpeciesCodes(
+    KIM::ModelCompute const* const modelCompute,
+    int const* const particleSpeciesCodes) const
 {
   int ier;
-  for (int i = 0; i < cachedNumberOfParticles_; ++i)
-  {
-    if ((particleSpecies[i] < 0) || (particleSpecies[i] >= numberModelSpecies_))
-    {
-      ier = KIM_STATUS_FAIL;
-      pkim->report_error(__LINE__, __FILE__,
-                         "unsupported particle species detected", ier);
+
+  for (int i = 0; i < cachedNumberOfParticles_; ++i) {
+    if ((particleSpeciesCodes[i] < 0) || (particleSpeciesCodes[i] >= numberModelSpecies_)) {
+      ier = true;
+      LOG_ERROR("unsupported particle species codes detected");
       return ier;
     }
   }
 
   // everything is good
-  ier = KIM_STATUS_OK;
+  ier = false;
   return ier;
 }
+
 
 //******************************************************************************
 int ANNImplementation::GetComputeIndex(
@@ -1092,136 +943,310 @@ int ANNImplementation::GetComputeIndex(
     const bool& isComputeProcess_d2Edr2,
     const bool& isComputeEnergy,
     const bool& isComputeForces,
-    const bool& isComputeParticleEnergy) const
+    const bool& isComputeParticleEnergy,
+    const bool& isComputeVirial,
+    const bool& isComputeParticleVirial) const
 {
   //const int processdE = 2;
   const int processd2E = 2;
   const int energy = 2;
   const int force = 2;
   const int particleEnergy = 2;
+  const int virial = 2;
+  const int particleVirial = 2;
 
 
   int index = 0;
 
   // processdE
   index += (int(isComputeProcess_dEdr))
-      * processd2E * energy * force * particleEnergy;
+           * processd2E * energy * force * particleEnergy * virial * particleVirial;
 
   // processd2E
-  index += (int(isComputeProcess_d2Edr2)) * energy * force * particleEnergy;
+  index += (int(isComputeProcess_d2Edr2))
+           * energy * force * particleEnergy * virial * particleVirial;
 
   // energy
-  index += (int(isComputeEnergy)) * force * particleEnergy;
+  index += (int(isComputeEnergy))
+           * force * particleEnergy * virial * particleVirial;
 
   // force
-  index += (int(isComputeForces)) * particleEnergy;
+  index += (int(isComputeForces))
+           * particleEnergy * virial * particleVirial;
 
   // particleEnergy
-  index += (int(isComputeParticleEnergy));
+  index += (int(isComputeParticleEnergy))
+           * virial * particleVirial;
 
+  // virial
+  index += (int(isComputeVirial))
+           * particleVirial;
+
+  // particleVirial
+  index += (int(isComputeParticleVirial));
 
   return index;
 }
 
 
-//******************************************************************************
-// assign atoms into layers
-// To assign atoms into different layers. If `ruct_layer < 0', it will be
-// determined internally within the code by finding the max of the min of pair
-// distance between eatch atom and its neighbors. This is a bit more expensive
-// since it runs through the neighborlist once.
+//==============================================================================
 //
-//******************************************************************************
-
-// TODO delete, for debug purpose
-void write_XYZ(int natoms, const VectorOfSizeDIM* const coords) {
-
-  std::ofstream fp;
-  fp.open("atom_pos.xyz");
-  fp << natoms <<std::endl;
-  fp << "Lattice=\"1 0 0 0 1 0 0 0 1\" PBC=\"1 1 1\" Properties=\"species:S:1:pos:R:3\" Energy=0"<<std::endl;
-  for (int i=0; i<natoms; i++) {
-    fp <<"C " << coords[i][0] << " "<< coords[i][1] << " "<< coords[i][2] << std::endl;
-  }
-
-  fp.close();
-}
-
-
-
-
-
-
-
-
-/* Calculate pair potential phi(r) */
-
-void calc_phi(double const epsilon, double const sigma,
-    double const cutoff, double const r, double * const phi)
+// ANN functions
+//
+//==============================================================================
+void ANNImplementation::CalcPhiTwo(int const ispec, int const jspec,
+    double const r, double& phi) const
 {
+  // get parameters
+  double const A = A_2D_[ispec][jspec];
+  double const B = B_2D_[ispec][jspec];
+  double const p = p_2D_[ispec][jspec];
+  double const q = q_2D_[ispec][jspec];
+  double const sigma = sigma_2D_[ispec][jspec];
+  double const cutoff = sqrt(cutoffSq_2D_[ispec][jspec]);
 
-  double sor, sor6, sor12;
+  double r_cap = r / sigma;
 
   if (r >= cutoff) {
-    *phi = 0;
+    phi = 0.0;
   }
   else {
-    sor  = sigma/r;
-    sor6 = sor*sor*sor;
-    sor6 = sor6*sor6;
-    /*sor12= sor6*sor6; */
-    sor12= 0;
-    *phi = 4.0*epsilon*(sor12-sor6);
+    phi = A * (B * pow(r_cap, -p) - pow(r_cap, -q)) * exp(sigma / (r - cutoff));
   }
-
 }
 
 
-void calc_phi_dphi(double const epsilon, double const sigma,
-    double const cutoff, double const r, double * const phi, double * const dphi)
+void ANNImplementation::CalcPhiDphiTwo(int const ispec, int const jspec,
+    double const r, double& phi, double& dphi) const
 {
-  double sor, sor6, sor12;
+  // get parameters
+  double const A = A_2D_[ispec][jspec];
+  double const B = B_2D_[ispec][jspec];
+  double const p = p_2D_[ispec][jspec];
+  double const q = q_2D_[ispec][jspec];
+  double const sigma = sigma_2D_[ispec][jspec];
+  double const cutoff = sqrt(cutoffSq_2D_[ispec][jspec]);
 
+  double r_cap = r / sigma;
 
   if (r >= cutoff) {
-    *phi = 0;
-    *dphi = 0;
+    phi = 0.0;
+    dphi = 0.0;
   }
   else {
-    sor  = sigma/r;
-    sor6 = sor*sor*sor;
-    sor6 = sor6*sor6;
-    /*sor12= sor6*sor6;*/
-    sor12= 0;
-    *phi = 4.0*epsilon*(sor12-sor6);
-    *dphi = 24.0*epsilon*(-2.0*sor12 + sor6)/r;
-  }
+    phi = A * (B * pow(r_cap, -p) - pow(r_cap, -q)) * exp(sigma / (r - cutoff));
 
+    dphi = (q * pow(r_cap, -(q + 1)) - p * B * pow(r_cap, -(p + 1)))
+           - (B * pow(r_cap, -p) - pow(r_cap, -q)) * pow((r - cutoff) / sigma, -2);
+    dphi *= (1 / sigma) * A * exp(sigma / (r - cutoff));
+  }
 }
 
 
-/* switch function  */
-void switch_fn(double const x_min, double const x_max, double const x,
-    double *const fn, double * const fn_prime)
+void ANNImplementation::CalcPhiD2phiTwo(int const ispec, int const jspec,
+    double const r, double& phi, double& dphi, double& d2phi) const
 {
-  double t;
-  double t_sq;
-  double t_cubic;
+  // get parameters
+  double const A = A_2D_[ispec][jspec];
+  double const B = B_2D_[ispec][jspec];
+  double const p = p_2D_[ispec][jspec];
+  double const q = q_2D_[ispec][jspec];
+  double const sigma = sigma_2D_[ispec][jspec];
+  double const cutoff = sqrt(cutoffSq_2D_[ispec][jspec]);
 
-  if (x <= x_min) {
-    *fn = 1;
-    *fn_prime = 0;
-  }
-  else if (x >= x_max) {
-    *fn = 0;
-    *fn_prime = 0;
+  double r_cap = r / sigma;
+
+  if (r >= cutoff) {
+    phi = 0.0;
+    dphi = 0.0;
+    d2phi = 0.0;
   }
   else {
-    t = (x - x_min)/(x_max - x_min);
-    t_sq = t*t;
-    t_cubic = t_sq*t;
-    *fn = t_cubic*(-10.0 +15*t -6*t_sq) + 1;
-    *fn_prime = t_sq*(-30 + 60*t - 30*t_sq)/(x_max-x_min);
-  }
+    phi = A * (B * pow(r_cap, -p) - pow(r_cap, -q)) * exp(sigma / (r - cutoff));
 
+    dphi = (q * pow(r_cap, -(q + 1)) - p * B * pow(r_cap, -(p + 1)))
+           - (B * pow(r_cap, -p) - pow(r_cap, -q)) * pow((r - cutoff) / sigma, -2);
+    dphi *= (1 / sigma) * A * exp(sigma / (r - cutoff));
+
+    d2phi = (B * pow(r_cap, -p) - pow(r_cap, -q))
+            * (pow((r - cutoff) / sigma, -4) + 2 * pow((r - cutoff) / sigma, -3))
+            + 2 * (p * B * pow(r_cap, -(p + 1)) - q * pow(r_cap, -(q + 1)))
+            * pow((r - cutoff) / sigma, -2)
+            + (p * (p + 1) * B * pow(r_cap, -(p + 2))
+               - q * (q + 1) * pow(r_cap, -(q + 2)));
+    d2phi *= (1 / (sigma * sigma)) * A * exp(sigma / (r - cutoff));
+  }
+}
+
+
+void ANNImplementation::CalcPhiThree(int const ispec, int const jspec,
+    int const kspec, double const rij, double const rik, double const rjk,
+    double& phi) const
+{
+  // get parameters
+  double const lambda_ij = lambda_2D_[ispec][jspec];
+  double const lambda_ik = lambda_2D_[ispec][kspec];
+  double const gamma_ij = gamma_2D_[ispec][jspec];
+  double const gamma_ik = gamma_2D_[ispec][kspec];
+  double const costheta0_ij = costheta0_2D_[ispec][jspec];
+  double const cutoff_ij = sqrt(cutoffSq_2D_[ispec][jspec]);
+  double const cutoff_ik = sqrt(cutoffSq_2D_[ispec][kspec]);
+  // mix parameters
+  double const lambda = sqrt(fabs(lambda_ij) * fabs(lambda_ik));
+  double const costheta0 = costheta0_ij;  // do not mix
+
+  if (rij < cutoff_ij && rik < cutoff_ik) {
+    double costhetajik = (pow(rij, 2) + pow(rik, 2) - pow(rjk, 2)) / (2 * rij * rik);
+    double diff_costhetajik = costhetajik - costheta0;
+    double exp_ij_ik = exp(gamma_ij / (rij - cutoff_ij) + gamma_ik / (rik - cutoff_ik));
+    phi = lambda * exp_ij_ik * diff_costhetajik * diff_costhetajik;
+  }
+  else {
+    phi = 0.0;
+  }
+}
+
+
+void ANNImplementation::CalcPhiDphiThree(int const ispec, int const jspec,
+    int const kspec, double const rij, double const rik, double const rjk,
+    double& phi, double* const dphi) const
+{
+  // get parameters
+  double const lambda_ij = lambda_2D_[ispec][jspec];
+  double const lambda_ik = lambda_2D_[ispec][kspec];
+  double const gamma_ij = gamma_2D_[ispec][jspec];
+  double const gamma_ik = gamma_2D_[ispec][kspec];
+  double const costheta0_ij = costheta0_2D_[ispec][jspec];
+  double const cutoff_ij = sqrt(cutoffSq_2D_[ispec][jspec]);
+  double const cutoff_ik = sqrt(cutoffSq_2D_[ispec][kspec]);
+  // mix parameters
+  double const lambda = sqrt(fabs(lambda_ij) * fabs(lambda_ik));
+  double const costheta0 = costheta0_ij;  // do not mix
+
+
+  if (rij < cutoff_ij && rik < cutoff_ik) {
+    double costhetajik = (pow(rij, 2) + pow(rik, 2) - pow(rjk, 2)) / (2 * rij * rik);
+    double diff_costhetajik = costhetajik - costheta0;
+
+    /* Derivatives of cosines w.r.t rij, rik, rjk */
+    double costhetajik_ij = (pow(rij, 2) - pow(rik, 2) + pow(rjk, 2))
+                            / (2 * rij * rij * rik);
+    double costhetajik_ik = (pow(rik, 2) - pow(rij, 2) + pow(rjk, 2))
+                            / (2 * rij * rik * rik);
+    double costhetajik_jk = -rjk / (rij * rik);
+
+    /* Variables for simplifying terms */
+    double exp_ij_ik = exp(gamma_ij / (rij - cutoff_ij) + gamma_ik / (rik - cutoff_ik));
+    double d_ij = -gamma_ij* pow(rij - cutoff_ij, -2);
+    double d_ik = -gamma_ik* pow(rik - cutoff_ik, -2);
+
+    phi = lambda * exp_ij_ik * diff_costhetajik * diff_costhetajik;
+
+    dphi[0] = lambda * diff_costhetajik * exp_ij_ik
+              * (d_ij * diff_costhetajik + 2 * costhetajik_ij);
+    dphi[1] = lambda * diff_costhetajik * exp_ij_ik
+              * (d_ik * diff_costhetajik + 2 * costhetajik_ik);
+    dphi[2] = lambda * diff_costhetajik * exp_ij_ik * 2 * costhetajik_jk;
+  }
+  else {
+    phi = 0.0;
+    dphi[0] = 0.0;
+    dphi[1] = 0.0;
+    dphi[2] = 0.0;
+  }
+}
+
+
+// Calculate phi_three(rij, rik, rjk) and its 1st & 2nd derivatives
+// dphi_three(rij, rik, rjk), d2phi_three(rij, rik, rjk)
+//
+// dphi has three components as derivatives of phi w.r.t. rij, rik, rjk
+//
+// d2phi as symmetric Hessian matrix of phi has six components:
+//    [0]=(ij,ij), [3]=(ij,ik), [4]=(ij,jk)
+//                 [1]=(ik,ik), [5]=(ik,jk)
+//                              [2]=(jk,jk)
+
+void ANNImplementation::CalcPhiD2phiThree(int const ispec, int const jspec,
+    int const kspec, double const rij, double const rik, double const rjk,
+    double& phi, double* const dphi, double* const d2phi) const
+{
+  // get parameters
+  double const lambda_ij = lambda_2D_[ispec][jspec];
+  double const lambda_ik = lambda_2D_[ispec][kspec];
+  double const gamma_ij = gamma_2D_[ispec][jspec];
+  double const gamma_ik = gamma_2D_[ispec][kspec];
+  double const costheta0_ij = costheta0_2D_[ispec][jspec];
+  double const cutoff_ij = sqrt(cutoffSq_2D_[ispec][jspec]);
+  double const cutoff_ik = sqrt(cutoffSq_2D_[ispec][kspec]);
+  // mix parameters
+  double const lambda = sqrt(fabs(lambda_ij) * fabs(lambda_ik));
+  double const costheta0 = costheta0_ij;  // do not mix
+
+
+  if (rij < cutoff_ij && rik < cutoff_ik) {
+    double costhetajik = (pow(rij, 2) + pow(rik, 2) - pow(rjk, 2)) / (2 * rij * rik);
+    double diff_costhetajik = costhetajik - costheta0;
+    double diff_costhetajik_2 = diff_costhetajik * diff_costhetajik;
+
+    /* Derivatives of cosines w.r.t. r_ij, r_ik, r_jk */
+    double costhetajik_ij = (pow(rij, 2) - pow(rik, 2) + pow(rjk, 2))
+                            / (2 * rij * rij * rik);
+    double costhetajik_ik = (pow(rik, 2) - pow(rij, 2) + pow(rjk, 2))
+                            / (2 * rij * rik * rik);
+    double costhetajik_jk = -rjk / (rij * rik);
+
+    /* Hessian matrix of cosine */
+    double costhetajik_ij_ij = (pow(rik, 2) - pow(rjk, 2)) / (rij * rij * rij * rik);
+    double costhetajik_ik_ik = (pow(rij, 2) - pow(rjk, 2)) / (rij * rik * rik * rik);
+    double costhetajik_jk_jk = -1 / (rij * rik);
+    double costhetajik_ij_ik = -(pow(rij, 2) + pow(rik, 2) + pow(rjk, 2))
+                               / (2 * rij * rij * rik * rik);
+    double costhetajik_ij_jk = rjk / (rij * rij * rik);
+    double costhetajik_ik_jk = rjk / (rik * rik * rij);
+
+    /* Variables for simplifying terms */
+    double exp_ij_ik = exp(gamma_ij / (rij - cutoff_ij) + gamma_ik / (rik - cutoff_ik));
+    double d_ij = -gamma_ij* pow(rij - cutoff_ij, -2);
+    double d_ik = -gamma_ik* pow(rik - cutoff_ik, -2);
+    double d_ij_2 = d_ij * d_ij;
+    double d_ik_2 = d_ik * d_ik;
+    double dd_ij = 2* gamma_ij* pow(rij - cutoff_ij, -3);
+    double dd_ik = 2* gamma_ik* pow(rik - cutoff_ik, -3);
+
+    phi = lambda * exp_ij_ik * diff_costhetajik * diff_costhetajik;
+
+    dphi[0] = lambda * diff_costhetajik * exp_ij_ik
+              * (d_ij * diff_costhetajik + 2 * costhetajik_ij);
+    dphi[1] = lambda * diff_costhetajik * exp_ij_ik
+              * (d_ik * diff_costhetajik + 2 * costhetajik_ik);
+    dphi[2] = lambda * diff_costhetajik * exp_ij_ik * 2 * costhetajik_jk;
+
+    d2phi[0] = lambda * exp_ij_ik *
+               ((d_ij_2 + dd_ij) * diff_costhetajik_2
+                + (4 * d_ij * costhetajik_ij + 2 * costhetajik_ij_ij) * diff_costhetajik
+                + 2 * costhetajik_ij * costhetajik_ij);
+    d2phi[1] = lambda * exp_ij_ik *
+               ((d_ik_2 + dd_ik) * diff_costhetajik_2
+                + (4 * d_ik * costhetajik_ik + 2 * costhetajik_ik_ik) * diff_costhetajik
+                + 2 * costhetajik_ik * costhetajik_ik);
+    d2phi[2] = lambda * 2 * exp_ij_ik *
+               (costhetajik_jk_jk * diff_costhetajik
+                + costhetajik_jk * costhetajik_jk);
+    d2phi[3] = lambda * exp_ij_ik *
+               (d_ij * d_ik * diff_costhetajik_2
+                + (d_ij * costhetajik_ik + d_ik * costhetajik_ij + costhetajik_ij_ik)
+                * 2 * diff_costhetajik + 2 * costhetajik_ij * costhetajik_ik);
+    d2phi[4] = lambda * exp_ij_ik *
+               ((d_ij * costhetajik_jk + costhetajik_ij_jk)
+                * 2 * diff_costhetajik + 2 * costhetajik_ij * costhetajik_jk);
+    d2phi[5] = lambda * exp_ij_ik *
+               ((d_ik * costhetajik_jk + costhetajik_ik_jk)
+                * 2 * diff_costhetajik + 2 * costhetajik_ik * costhetajik_jk);
+  }
+  else {
+    phi = 0.0;
+    dphi[0] = dphi[1] = dphi[2] = 0.0;
+    d2phi[0] = d2phi[1] = d2phi[2] = d2phi[3] = d2phi[4] = d2phi[5] = 0.0;
+  }
 }

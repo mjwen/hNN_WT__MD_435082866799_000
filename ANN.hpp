@@ -19,7 +19,7 @@
 //
 
 //
-// Copyright (c) 2015, Regents of the University of Minnesota.
+// Copyright (c) 2018, Regents of the University of Minnesota.
 // All rights reserved.
 //
 // Contributors:
@@ -30,34 +30,51 @@
 #ifndef ANN_HPP_
 #define ANN_HPP_
 
-#include "KIM_API.h"
+
+#include "KIM_ModelDriverHeaders.hpp"
 
 extern "C"
 {
-  int model_driver_init(void* km, char* paramfile_names, int* nmstrlen,
-                        int* numparamfiles);
+int model_driver_create(
+    KIM::ModelDriverCreate* const modelDriverCreate,
+    KIM::LengthUnit const requestedLengthUnit,
+    KIM::EnergyUnit const requestedEnergyUnit,
+    KIM::ChargeUnit const requestedChargeUnit,
+    KIM::TemperatureUnit const requestedTemperatureUnit,
+    KIM::TimeUnit const requestedTimeUnit);
 }
 
 class ANNImplementation;
 
 class ANN
 {
- public:
-  ANN(KIM_API_model* const pkim,
-                  char const* const parameterFileNames,
-                  int const parameterFileNameLength,
-                  int const numberParameterFiles,
-                  int* const ier);
+public:
+  ANN(
+      KIM::ModelDriverCreate* const modelDriverCreate,
+      KIM::LengthUnit const requestedLengthUnit,
+      KIM::EnergyUnit const requestedEnergyUnit,
+      KIM::ChargeUnit const requestedChargeUnit,
+      KIM::TemperatureUnit const requestedTemperatureUnit,
+      KIM::TimeUnit const requestedTimeUnit,
+      int* const ier);
   ~ANN();
 
   // no need to make these "extern" since KIM will only access them
   // via function pointers.  "static" is required so that there is not
   // an implicit this pointer added to the prototype by the C++ compiler
-  static int Destroy(void* kimmdl);
-  static int Reinit(void* kimmdl);
-  static int Compute(void* kimmdl);
+  static int Destroy(KIM::ModelDestroy* const modelDestroy);
+  static int Refresh(KIM::ModelRefresh* const modelRefresh);
+  static int Compute(
+      KIM::ModelCompute const* const modelCompute,
+      KIM::ModelComputeArguments const* const modelComputeArguments);
+  static int ComputeArgumentsCreate(
+      KIM::ModelCompute const* const modelCompute,
+      KIM::ModelComputeArgumentsCreate* const modelComputeArgumentsCreate);
+  static int ComputeArgumentsDestroy(
+      KIM::ModelCompute const* const modelCompute,
+      KIM::ModelComputeArgumentsDestroy* const modelComputeArgumentsDestroy);
 
- private:
+private:
   ANNImplementation* implementation_;
 };
 
