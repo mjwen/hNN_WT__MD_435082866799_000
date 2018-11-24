@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <Eigen/Core>
-#include "helper.h"
+#include "helper.hpp"
 
 using namespace Eigen;
 

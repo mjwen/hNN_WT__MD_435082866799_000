@@ -34,10 +34,11 @@
 #include <iostream>
 #include <map>
 
-#include "ANNImplementation.hpp"
 #include "KIM_ModelDriverHeaders.hpp"
+#include "ANN.hpp"
+#include "ANNImplementation.hpp"
 
-#define MAXLINE 1024
+#define MAXLINE 2048
 
 
 //==============================================================================
@@ -61,27 +62,19 @@ ANNImplementation::ANNImplementation(
   : numberModelSpecies_(0),
   numberUniqueSpeciesPairs_(0),
   cutoff_(NULL),
-  A_(NULL),
-  B_(NULL),
-  p_(NULL),
-  q_(NULL),
-  sigma_(NULL),
-  lambda_(NULL),
-  gamma_(NULL),
-  costheta0_(NULL),
+  lj_epsilon_(0.0),
+  lj_sigma_(0.0),
+  lj_cutoff_(0.0),
+  cutoffSq_2D_(NULL),
   influenceDistance_(0.0),
   modelWillNotRequestNeighborsOfNoncontributingParticles_(1),
-  cutoffSq_2D_(NULL),
-  A_2D_(NULL),
-  B_2D_(NULL),
-  p_2D_(NULL),
-  q_2D_(NULL),
-  sigma_2D_(NULL),
-  lambda_2D_(NULL),
-  gamma_2D_(NULL),
-  costheta0_2D_(NULL),
   cachedNumberOfParticles_(0)
 {
+  // create descriptor and network classes
+	descriptor_ = new Descriptor();
+	network_ = new NeuralNetwork();
+
+
   FILE* parameterFilePointers[MAX_PARAMETER_FILES];
   int numberParameterFiles;
 
@@ -140,24 +133,7 @@ ANNImplementation::~ANNImplementation()
 { // note: it is ok to delete a null pointer and we have ensured that
   // everything is initialized to null
 
-  Deallocate1DArray<double>(A_);
-  Deallocate1DArray<double>(B_);
-  Deallocate1DArray<double>(p_);
-  Deallocate1DArray<double>(q_);
-  Deallocate1DArray<double>(sigma_);
-  Deallocate1DArray<double>(lambda_);
-  Deallocate1DArray<double>(gamma_);
-  Deallocate1DArray<double>(costheta0_);
   Deallocate1DArray<double>(cutoff_);
-
-  Deallocate2DArray<double>(A_2D_);
-  Deallocate2DArray<double>(B_2D_);
-  Deallocate2DArray<double>(p_2D_);
-  Deallocate2DArray<double>(q_2D_);
-  Deallocate2DArray<double>(sigma_2D_);
-  Deallocate2DArray<double>(lambda_2D_);
-  Deallocate2DArray<double>(gamma_2D_);
-  Deallocate2DArray<double>(costheta0_2D_);
   Deallocate2DArray<double>(cutoffSq_2D_);
 }
 
@@ -286,24 +262,7 @@ void ANNImplementation::AllocatePrivateParameterMemory()
 void ANNImplementation::AllocateParameterMemory()
 { // allocate memory for data
   AllocateAndInitialize1DArray<double> (cutoff_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (A_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (B_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (p_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (q_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (sigma_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (lambda_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (gamma_, numberUniqueSpeciesPairs_);
-  AllocateAndInitialize1DArray<double> (costheta0_, numberUniqueSpeciesPairs_);
-
-  AllocateAndInitialize2DArray<double> (cutoffSq_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (A_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (B_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (p_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (q_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (sigma_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (lambda_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (gamma_2D_, numberModelSpecies_, numberModelSpecies_);
-  AllocateAndInitialize2DArray<double> (costheta0_2D_, numberModelSpecies_, numberModelSpecies_);
+	AllocateAndInitialize2DArray<double> (cutoffSq_2D_, numberModelSpecies_, numberModelSpecies_);
 }
 
 
@@ -362,124 +321,489 @@ int ANNImplementation::ProcessParameterFiles(
     int const numberParameterFiles,
     FILE* const parameterFilePointers[MAX_PARAMETER_FILES])
 {
-  int N, ier;
+
+//  int N, ier;
+//  int endOfFileFlag = 0;
+//  char spec1[MAXLINE], spec2[MAXLINE], nextLine[MAXLINE];
+//  int iIndex, jIndex, indx;
+//  double next_A, next_B, next_p, next_q, next_sigma, next_lambda, next_gamma;
+//  double next_costheta0, next_cutoff;
+//
+//  (void) numberParameterFiles; // avoid not used warning
+//
+//  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+//  ier = sscanf(nextLine, "%d", &N);
+//  if (ier != 1) {
+//    sprintf(nextLine, "unable to read first line of the parameter file");
+//    ier = true;
+//    LOG_ERROR(nextLine);
+//    fclose(parameterFilePointers[0]);
+//    return ier;
+//  }
+//  numberModelSpecies_ = N;
+//  numberUniqueSpeciesPairs_ = ((numberModelSpecies_ + 1) * numberModelSpecies_) / 2;
+//  AllocateParameterMemory();
+//
+//  // set all values of p_ to -1.1e10 for later check that we have read all params
+//  for (int i = 0; i < ((N + 1) * N / 2); i++) {
+//    p_[i] = -1.1e10;
+//  }
+//
+//  // keep track of known species
+//  std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator> modelSpeciesMap;
+//  int index = 0;   // species code integer code starting from 0
+//
+//  // Read and process data lines
+//  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+//  while (endOfFileFlag == 0)
+//  {
+//    ier = sscanf(nextLine, "%s %s %lg %lg %lg %lg %lg %lg %lg %lg %lg",
+//        spec1, spec2, &next_A, &next_B, &next_p, &next_q, &next_sigma,
+//        &next_lambda, &next_gamma, &next_costheta0, &next_cutoff);
+//    if (ier != 11) {
+//      sprintf(nextLine, "error reading lines of the parameter file");
+//      LOG_ERROR(nextLine);
+//      return true;
+//    }
+//
+//    // convert species strings to proper type instances
+//    KIM::SpeciesName const specName1(spec1);
+//    KIM::SpeciesName const specName2(spec2);
+//     if ((specName1.String() == "unknown") ||
+//         (specName2.String() == "unknown") ) {
+//      sprintf(nextLine, "error parameter file: get unknown species");
+//      LOG_ERROR(nextLine);
+//      return true;
+//    }
+//
+//
+//    // check for new species
+//    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
+//    const_iterator iIter = modelSpeciesMap.find(specName1);
+//    if (iIter == modelSpeciesMap.end()) {
+//      modelSpeciesMap[specName1] = index;
+//      modelSpeciesCodeList_.push_back(index);
+//
+//      ier = modelDriverCreate->SetSpeciesCode(specName1, index);
+//      if (ier) {
+//        return ier;
+//      }
+//      iIndex = index;
+//      index++;
+//    }
+//    else {
+//      iIndex = modelSpeciesMap[specName1];
+//    }
+//
+//    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
+//    const_iterator jIter = modelSpeciesMap.find(specName2);
+//    if (jIter == modelSpeciesMap.end()) {
+//      modelSpeciesMap[specName2] = index;
+//      modelSpeciesCodeList_.push_back(index);
+//
+//      ier = modelDriverCreate->SetSpeciesCode(specName2, index);
+//      if (ier) {
+//        return ier;
+//      }
+//      jIndex = index;
+//      index++;
+//    }
+//    else {
+//      jIndex = modelSpeciesMap[specName2];
+//    }
+//
+//    if (iIndex >= jIndex) {
+//      indx = jIndex * N + iIndex - (jIndex * jIndex + jIndex) / 2;
+//    }
+//    else {
+//      indx = iIndex * N + jIndex - (iIndex * iIndex + iIndex) / 2;
+//    }
+//    A_[indx] = next_A;
+//    B_[indx] = next_B;
+//    p_[indx] = next_p;
+//    q_[indx] = next_q;
+//    sigma_[indx] = next_sigma;
+//    lambda_[indx] = next_lambda;
+//    gamma_[indx] = next_gamma;
+//    costheta0_[indx] = next_costheta0;
+//    cutoff_[indx] = next_cutoff;
+//
+//    getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+//  }
+//
+//  // check we have read all parameters
+//  for (int i = 0; i < ((N + 1) * N / 2); i++) {
+//    if (p_[i] < -1e10) {
+//      sprintf(nextLine, "error: not enough parameter data.\n");
+//      sprintf(nextLine, "%d species requires %d data lines.", N, (N + 1) * N / 2);
+//      LOG_ERROR(nextLine);
+//      return true;
+//    }
+//  }
+//
+
+
+
+  int ier;
+  //int N;
   int endOfFileFlag = 0;
-  char spec1[MAXLINE], spec2[MAXLINE], nextLine[MAXLINE];
-  int iIndex, jIndex, indx;
-  double next_A, next_B, next_p, next_q, next_sigma, next_lambda, next_gamma;
-  double next_costheta0, next_cutoff;
+  char nextLine[MAXLINE];
+  char errorMsg[MAXLINE];
+  char name[MAXLINE];
+	double cutoff;
+	double cutoff_samelayer;
 
-  (void) numberParameterFiles; // avoid not used warning
+  // descriptor
+	int numDescTypes;
+	int numDescs;
+	int numParams;
+	int numParamSets;
+	double** descParams = NULL;
 
+  // network
+  int numLayers;
+  int* numPerceptrons;
+
+  //char spec1[MAXLINE], spec2[MAXLINE];
+  //int iIndex, jIndex , indx, iiIndex, jjIndex;
+  //double nextCutoff;
+
+	// cutoff
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%d", &N);
-  if (ier != 1) {
-    sprintf(nextLine, "unable to read first line of the parameter file");
-    ier = true;
-    LOG_ERROR(nextLine);
-    fclose(parameterFilePointers[0]);
-    return ier;
-  }
-  numberModelSpecies_ = N;
-  numberUniqueSpeciesPairs_ = ((numberModelSpecies_ + 1) * numberModelSpecies_) / 2;
-  AllocateParameterMemory();
-
-  // set all values of p_ to -1.1e10 for later check that we have read all params
-  for (int i = 0; i < ((N + 1) * N / 2); i++) {
-    p_[i] = -1.1e10;
+  ier = sscanf(nextLine, "%s %lf %lf", name, &cutoff, &cutoff_samelayer);
+  if (ier != 3) {
+    sprintf(errorMsg, "unable to read cutoff from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
   }
 
-  // keep track of known species
-  std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator> modelSpeciesMap;
-  int index = 0;   // species code integer code starting from 0
-
-  // Read and process data lines
-  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  while (endOfFileFlag == 0)
+  // register cutoff
+  lowerCase(name);
+  if (strcmp(name, "cos") != 0 && strcmp(name, "exp") != 0)
   {
-    ier = sscanf(nextLine, "%s %s %lg %lg %lg %lg %lg %lg %lg %lg %lg",
-        spec1, spec2, &next_A, &next_B, &next_p, &next_q, &next_sigma,
-        &next_lambda, &next_gamma, &next_costheta0, &next_cutoff);
-    if (ier != 11) {
-      sprintf(nextLine, "error reading lines of the parameter file");
-      LOG_ERROR(nextLine);
-      return true;
-    }
+    sprintf(errorMsg, "unsupported cutoff type. Expecting `cos', or `exp' "
+        "given %s.\n", name);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+	descriptor_->set_cutfunc(name);
 
-    // convert species strings to proper type instances
-    KIM::SpeciesName const specName1(spec1);
-    KIM::SpeciesName const specName2(spec2);
-     if ((specName1.String() == "unknown") ||
-         (specName2.String() == "unknown") ) {
-      sprintf(nextLine, "error parameter file: get unknown species");
-      LOG_ERROR(nextLine);
-      return true;
-    }
+//TODO modifiy this such that each pair has its own cutoff
+// use of numberUniqueSpeciesPairs is not good. Since it requires the Model
+// provide all the params that the Driver supports. number of species should
+// be read in from the input file.
+  for (int i=0; i<numberUniqueSpeciesPairs_; i++) {
+	  cutoff_[i] = cutoff;
+  }
 
+	// number of descriptor types
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%d", &numDescTypes);
+  if (ier != 1) {
+    sprintf(errorMsg, "unable to read number of descriptor types from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
 
-    // check for new species
-    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
-    const_iterator iIter = modelSpeciesMap.find(specName1);
-    if (iIter == modelSpeciesMap.end()) {
-      modelSpeciesMap[specName1] = index;
-      modelSpeciesCodeList_.push_back(index);
-
-      ier = modelDriverCreate->SetSpeciesCode(specName1, index);
-      if (ier) {
-        return ier;
-      }
-      iIndex = index;
-      index++;
-    }
-    else {
-      iIndex = modelSpeciesMap[specName1];
-    }
-
-    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
-    const_iterator jIter = modelSpeciesMap.find(specName2);
-    if (jIter == modelSpeciesMap.end()) {
-      modelSpeciesMap[specName2] = index;
-      modelSpeciesCodeList_.push_back(index);
-
-      ier = modelDriverCreate->SetSpeciesCode(specName2, index);
-      if (ier) {
-        return ier;
-      }
-      jIndex = index;
-      index++;
-    }
-    else {
-      jIndex = modelSpeciesMap[specName2];
-    }
-
-    if (iIndex >= jIndex) {
-      indx = jIndex * N + iIndex - (jIndex * jIndex + jIndex) / 2;
-    }
-    else {
-      indx = iIndex * N + jIndex - (iIndex * iIndex + iIndex) / 2;
-    }
-    A_[indx] = next_A;
-    B_[indx] = next_B;
-    p_[indx] = next_p;
-    q_[indx] = next_q;
-    sigma_[indx] = next_sigma;
-    lambda_[indx] = next_lambda;
-    gamma_[indx] = next_gamma;
-    costheta0_[indx] = next_costheta0;
-    cutoff_[indx] = next_cutoff;
-
+  // descriptor
+  for (int i=0; i<numDescTypes; i++) {
+    // descriptor name and parameter dimensions
     getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  }
 
-  // check we have read all parameters
-  for (int i = 0; i < ((N + 1) * N / 2); i++) {
-    if (p_[i] < -1e10) {
-      sprintf(nextLine, "error: not enough parameter data.\n");
-      sprintf(nextLine, "%d species requires %d data lines.", N, (N + 1) * N / 2);
-      LOG_ERROR(nextLine);
+    // name of descriptor
+    ier = sscanf(nextLine, "%s", name);
+    if (ier != 1) {
+      sprintf(errorMsg, "unable to read descriptor from line:\n");
+      strcat(errorMsg, nextLine);
+      LOG_ERROR(errorMsg);
       return true;
     }
+    lowerCase(name); // change to lower case name
+    if (strcmp(name, "g1") == 0) {  // G1
+      descriptor_->add_descriptor(name, NULL, 1, 0);
+    }
+    else{
+      // re-read name, and read number of param sets and number of params
+      ier = sscanf(nextLine, "%s %d %d", name, &numParamSets, &numParams);
+      if (ier != 3) {
+        sprintf(errorMsg, "unable to read descriptor from line:\n");
+        strcat(errorMsg, nextLine);
+        LOG_ERROR(errorMsg);
+        return true;
+      }
+      // change name to lower case
+      lowerCase(name);
+
+      // check size of params is correct w.r.t its name
+      if (strcmp(name, "g2") == 0) {
+        if (numParams != 2) {
+          sprintf(errorMsg, "number of params for descriptor G2 is incorrect, "
+              "expecting 2, but given %d.\n", numParams);
+          LOG_ERROR(errorMsg);
+          return true;
+        }
+      }
+      else if (strcmp(name, "g3") == 0) {
+        if (numParams != 1) {
+          sprintf(errorMsg, "number of params for descriptor G3 is incorrect, "
+              "expecting 1, but given %d.\n", numParams);
+          LOG_ERROR(errorMsg);
+          return true;
+        }
+      }
+      else if (strcmp(name, "g4") == 0) {
+        if (numParams != 3) {
+          sprintf(errorMsg, "number of params for descriptor G4 is incorrect, "
+              "expecting 3, but given %d.\n", numParams);
+          LOG_ERROR(errorMsg);
+          return true;
+        }
+      }
+      else if (strcmp(name, "g5") == 0) {
+        if (numParams != 3) {
+          sprintf(errorMsg, "number of params for descriptor G5 is incorrect, "
+              "expecting 3, but given %d.\n", numParams);
+          LOG_ERROR(errorMsg);
+          return true;
+        }
+      }
+      else {
+        sprintf(errorMsg, "unsupported descriptor `%s' from line:\n", name);
+        strcat(errorMsg, nextLine);
+        LOG_ERROR(errorMsg);
+        return true;
+      }
+
+      // read descriptor params
+      AllocateAndInitialize2DArray(descParams, numParamSets, numParams);
+      for (int j=0; j<numParamSets; j++) {
+        getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+        ier = getXdouble(nextLine, numParams, descParams[j]);
+        if (ier) {
+          sprintf(errorMsg, "unable to read descriptor parameters from line:\n");
+          strcat(errorMsg, nextLine);
+          LOG_ERROR(errorMsg);
+          return true;
+        }
+      }
+
+      // copy data to Descriptor
+      descriptor_->add_descriptor(name, descParams, numParamSets, numParams);
+      Deallocate2DArray(descParams);
+    }
   }
+  // number of descriptors
+  numDescs = descriptor_->get_num_descriptors();
+
+
+  // centering and normalizing params
+  // flag, whether we use this feature
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%*s %s", name);
+  if (ier != 1) {
+    sprintf(errorMsg, "unable to read centering and normalization info from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+  lowerCase(name);
+  bool do_center_and_normalize;
+  if (strcmp(name, "true") == 0) {
+    do_center_and_normalize = true;
+  } else {
+    do_center_and_normalize = false;
+  }
+
+  int size=0;
+  double* means = NULL;
+  double* stds = NULL;
+  if (do_center_and_normalize)
+  {
+    // size of the data, this should be equal to numDescs
+    getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+    ier = sscanf(nextLine, "%d", &size);
+    if (ier != 1) {
+      sprintf(errorMsg, "unable to read the size of centering and normalization "
+          "data info from line:\n");
+      strcat(errorMsg, nextLine);
+      LOG_ERROR(errorMsg);
+      return true;
+    }
+    if (size != numDescs) {
+      sprintf(errorMsg, "Size of centering and normalizing data inconsistent with "
+          "the number of descriptors. Size = %d, num_descriptors=%d\n", size, numDescs);
+      LOG_ERROR(errorMsg);
+      return true;
+    }
+
+    // read means
+    AllocateAndInitialize1DArray(means, size);
+    for (int i=0; i<size; i++) {
+      getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+      ier = sscanf(nextLine, "%lf", &means[i]);
+      if (ier != 1) {
+        sprintf(errorMsg, "unable to read `means' from line:\n");
+        strcat(errorMsg, nextLine);
+        LOG_ERROR(errorMsg);
+        return true;
+      }
+    }
+
+    // read standard deviations
+    AllocateAndInitialize1DArray(stds, size);
+    for (int i=0; i<size; i++) {
+      getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+      ier = sscanf(nextLine, "%lf", &stds[i]);
+      if (ier != 1) {
+        sprintf(errorMsg, "unable to read `means' from line:\n");
+        strcat(errorMsg, nextLine);
+        LOG_ERROR(errorMsg);
+        return true;
+      }
+    }
+  }
+
+  // store info into descriptor class
+	descriptor_->set_center_and_normalize(do_center_and_normalize, size, means, stds);
+  Deallocate1DArray(means);
+  Deallocate1DArray(stds);
+
+
+//TODO delete
+//  descriptor_->echo_input();
+
+
+  // network structure
+  // number of layers
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%d", &numLayers);
+  if (ier != 1) {
+    sprintf(errorMsg, "unable to read number of layers from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+
+  // number of perceptrons in each layer
+  numPerceptrons = new int[numLayers];
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  ier = getXint(nextLine, numLayers, numPerceptrons);
+  if (ier) {
+    sprintf(errorMsg, "unable to read number of perceptrons from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+
+  // copy to network class
+  network_->set_nn_structure(numDescs, numLayers, numPerceptrons);
+
+
+  // activation function
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%s", name);
+  if (ier != 1) {
+    sprintf(errorMsg, "unable to read `activation function` from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+
+  // register activation function
+  lowerCase(name);
+  if (strcmp(name, "sigmoid") != 0
+      && strcmp(name, "tanh") != 0
+      && strcmp(name, "relu") != 0
+      && strcmp(name, "elu") != 0)
+  {
+    sprintf(errorMsg, "unsupported activation function. Expecting `sigmoid`, `tanh` "
+        " `relu` or `elu`, given %s.\n", name);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+  network_->set_activation(name);
+
+
+  // keep probability
+  double* keep_prob;
+  AllocateAndInitialize1DArray(keep_prob, numLayers);
+
+  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+  ier = getXdouble(nextLine, numLayers, keep_prob);
+  if (ier) {
+    sprintf(errorMsg, "unable to read `keep probability` from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+  network_->set_keep_prob(keep_prob);
+  Deallocate1DArray(keep_prob);
+
+
+  // weights and biases
+  for (int i=0; i<numLayers; i++) {
+
+    double** weight;
+	  double* bias;
+    int row;
+    int col;
+
+    if (i==0) {
+      row = numDescs;
+      col = numPerceptrons[i];
+    } else {
+      row = numPerceptrons[i-1];
+      col = numPerceptrons[i];
+    }
+
+    AllocateAndInitialize2DArray(weight, row, col);
+    for (int j=0; j<row; j++) {
+      getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+      ier = getXdouble(nextLine, col, weight[j]);
+      if (ier) {
+        sprintf(errorMsg, "unable to read `weight` from line:\n");
+        strcat(errorMsg, nextLine);
+        LOG_ERROR(errorMsg);
+        return true;
+      }
+    }
+
+    // bias
+    AllocateAndInitialize1DArray(bias, col);
+    getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
+    ier = getXdouble(nextLine, col, bias);
+    if (ier) {
+      sprintf(errorMsg, "unable to read `bias` from line:\n");
+      strcat(errorMsg, nextLine);
+      LOG_ERROR(errorMsg);
+      return true;
+    }
+
+    // copy to network class
+    network_->add_weight_bias(weight, bias, i);
+
+    Deallocate2DArray(weight);
+    Deallocate1DArray(bias);
+  }
+
+  delete [] numPerceptrons;
+
+//TODO delete
+//  network_->echo_input();
+
+
+  // lj parameters
+  getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%lf %lf %lf", &lj_epsilon_, &lj_sigma_, &lj_cutoff_);
+  if (ier != 3) {
+    sprintf(errorMsg, "unable to lj parameters from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+
 
   // everything is good
   ier = false;
@@ -500,13 +824,78 @@ void ANNImplementation::getNextDataLine(
     }
 
     while ((nextLinePtr[0] == ' ' || nextLinePtr[0] == '\t') ||
-           (nextLinePtr[0] == '\n' || nextLinePtr[0] == '\r'))
+        (nextLinePtr[0] == '\n' || nextLinePtr[0] == '\r'))
     {
       nextLinePtr = (nextLinePtr + 1);
     }
   } while ((strncmp("#", nextLinePtr, 1) == 0) || (strlen(nextLinePtr) == 0));
+
+  // remove comments starting with `#' in a line
+  char* pch = strchr(nextLinePtr, '#');
+  if (pch != NULL) {
+    *pch = '\0';
+  }
+
 }
 
+//******************************************************************************
+int ANNImplementation::getXdouble(char* linePtr, const int N, double* list)
+{
+  int ier;
+  char * pch;
+  char line[MAXLINE];
+  int i = 0;
+
+  strcpy(line, linePtr);
+  pch = strtok(line, " \t\n\r");
+  while (pch != NULL) {
+    ier = sscanf(pch, "%lf", &list[i]);
+    if (ier != 1) {
+      return true;
+    }
+    pch = strtok(NULL, " \t\n\r");
+    i += 1;
+  }
+
+  if (i != N) {
+    return true;
+  }
+
+  return false;
+}
+
+//******************************************************************************
+int ANNImplementation::getXint(char* linePtr, const int N, int* list)
+{
+  int ier;
+  char * pch;
+  char line[MAXLINE];
+  int i = 0;
+
+  strcpy(line, linePtr);
+  pch = strtok(line, " \t\n\r");
+  while (pch != NULL) {
+    ier = sscanf(pch, "%d", &list[i]);
+    if (ier != 1) {
+      return true;
+    }
+    pch = strtok(NULL, " \t\n\r");
+    i += 1;
+  }
+  if (i != N) {
+    return true;
+  }
+
+  return false;
+}
+
+//******************************************************************************
+void ANNImplementation::lowerCase(char* linePtr)
+{
+  for(int i=0; linePtr[i]; i++){
+    linePtr[i] = tolower(linePtr[i]);
+  }
+}
 
 //******************************************************************************
 void ANNImplementation::CloseParameterFiles(
@@ -555,11 +944,10 @@ int ANNImplementation::ConvertUnits(
   }
   // convert to active units
   if (convertLength != ONE) {
-    for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
-      sigma_[i] *= convertLength;
-      gamma_[i] *= convertLength;
-      cutoff_[i] *= convertLength;
-    }
+    //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
+    //}
+    lj_sigma_ *= convertLength;
+    lj_cutoff_ *= convertLength;
   }
 
   // changing units of A and lambda
@@ -575,11 +963,10 @@ int ANNImplementation::ConvertUnits(
     return ier;
   }
   // convert to active units
-  if (convertLength != ONE) {
-    for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
-      A_[i] *= convertEnergy;
-      lambda_[i] *= convertEnergy;
-    }
+  if (convertEnergy != ONE) {
+    //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
+    //}
+      lj_epsilon_ *= convertEnergy;
   }
 
   // register units
@@ -664,82 +1051,10 @@ int ANNImplementation::RegisterKIMComputeArgumentsSettings(
 int ANNImplementation::RegisterKIMParameters(
     KIM::ModelDriverCreate* const modelDriverCreate)
 {
-  int ier = false;
-
-  // publish parameters (order is important)
-  ier =
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, A_, "A",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, B_, "B",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, p_, "p",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, q_, "q",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, sigma_, "sigma",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, lambda_, "lambda",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).  "
-        "This three-body parameter internally follows the mixing rule: "
-        "lambda_ijk = sqrt(lambda_ij*lambda_ik).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, gamma_, "gamma",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, costheta0_, "costheta0",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).  This parameter is not internally mixed.") ||
-    modelDriverCreate->SetParameterPointer(
-        numberUniqueSpeciesPairs_, cutoff_, "cutoff",
-        "Upper-triangular matrix (of size N=" + SNUM(numberUniqueSpeciesPairs_) + ") "
-        "in row-major storage.  Ordering is according to SpeciesCode values.  "
-        "For example, to find the parameter related to SpeciesCode 'i' and "
-        "SpeciesCode 'j' (i <= j), use (zero-based) "
-        "index = (i*N + j - (i*i + i)/2).");
-  if (ier) {
-    LOG_ERROR("set_parameters");
-    return ier;
-  }
+  // Do not support the publish of parameters
 
   // everything is good
-  ier = false;
+  int ier = false;
   return ier;
 }
 
@@ -787,14 +1102,6 @@ int ANNImplementation::SetRefreshMutableValues(
   for (int i = 0; i < numberModelSpecies_; ++i) {
     for (int j = 0; j <= i; ++j) {
       int const index = j * numberModelSpecies_ + i - (j * j + j) / 2;
-      A_2D_[i][j] = A_2D_[j][i] = A_[index];
-      B_2D_[i][j] = B_2D_[j][i] = B_[index];
-      p_2D_[i][j] = p_2D_[j][i] = p_[index];
-      q_2D_[i][j] = q_2D_[j][i] = q_[index];
-      sigma_2D_[i][j] = sigma_2D_[j][i] = sigma_[index];
-      lambda_2D_[i][j] = lambda_2D_[j][i] = lambda_[index];
-      gamma_2D_[i][j] = gamma_2D_[j][i] = gamma_[index];
-      costheta0_2D_[i][j] = costheta0_2D_[j][i] = costheta0_[index];
       cutoffSq_2D_[i][j] = cutoffSq_2D_[j][i] = cutoff_[index] * cutoff_[index];
     }
   }
@@ -815,6 +1122,13 @@ int ANNImplementation::SetRefreshMutableValues(
   }
 
   influenceDistance_ = sqrt(influenceDistance_);
+
+  // compare with lj cutoff
+
+  if(influenceDistance_ < lj_cutoff_) {
+    influenceDistance_ = lj_cutoff_;
+  }
+
   modelObj->SetInfluenceDistancePointer(&influenceDistance_);
   modelObj->SetNeighborListPointers(1,
       &influenceDistance_, &modelWillNotRequestNeighborsOfNoncontributingParticles_);
@@ -991,262 +1305,77 @@ int ANNImplementation::GetComputeIndex(
 
 //==============================================================================
 //
-// ANN functions
+// LJ functions
 //
 //==============================================================================
-void ANNImplementation::CalcPhiTwo(int const ispec, int const jspec,
-    double const r, double& phi) const
-{
-  // get parameters
-  double const A = A_2D_[ispec][jspec];
-  double const B = B_2D_[ispec][jspec];
-  double const p = p_2D_[ispec][jspec];
-  double const q = q_2D_[ispec][jspec];
-  double const sigma = sigma_2D_[ispec][jspec];
-  double const cutoff = sqrt(cutoffSq_2D_[ispec][jspec]);
 
-  double r_cap = r / sigma;
+void ANNImplementation::calc_phi(double const epsilon, double const sigma,
+    double const cutoff, double const r, double * const phi) const
+{
+
+  double sor, sor6, sor12;
 
   if (r >= cutoff) {
-    phi = 0.0;
+    *phi = 0;
   }
   else {
-    phi = A * (B * pow(r_cap, -p) - pow(r_cap, -q)) * exp(sigma / (r - cutoff));
+    sor  = sigma/r;
+    sor6 = sor*sor*sor;
+    sor6 = sor6*sor6;
+    /*sor12= sor6*sor6; */
+    sor12= 0;
+    *phi = 4.0*epsilon*(sor12-sor6);
   }
+
 }
 
 
-void ANNImplementation::CalcPhiDphiTwo(int const ispec, int const jspec,
-    double const r, double& phi, double& dphi) const
+void ANNImplementation::calc_phi_dphi(double const epsilon, double const sigma,
+    double const cutoff, double const r, double * const phi, double * const dphi) const
 {
-  // get parameters
-  double const A = A_2D_[ispec][jspec];
-  double const B = B_2D_[ispec][jspec];
-  double const p = p_2D_[ispec][jspec];
-  double const q = q_2D_[ispec][jspec];
-  double const sigma = sigma_2D_[ispec][jspec];
-  double const cutoff = sqrt(cutoffSq_2D_[ispec][jspec]);
+  double sor, sor6, sor12;
 
-  double r_cap = r / sigma;
 
   if (r >= cutoff) {
-    phi = 0.0;
-    dphi = 0.0;
+    *phi = 0;
+    *dphi = 0;
   }
   else {
-    phi = A * (B * pow(r_cap, -p) - pow(r_cap, -q)) * exp(sigma / (r - cutoff));
-
-    dphi = (q * pow(r_cap, -(q + 1)) - p * B * pow(r_cap, -(p + 1)))
-           - (B * pow(r_cap, -p) - pow(r_cap, -q)) * pow((r - cutoff) / sigma, -2);
-    dphi *= (1 / sigma) * A * exp(sigma / (r - cutoff));
+    sor  = sigma/r;
+    sor6 = sor*sor*sor;
+    sor6 = sor6*sor6;
+    /*sor12= sor6*sor6;*/
+    sor12= 0;
+    *phi = 4.0*epsilon*(sor12-sor6);
+    *dphi = 24.0*epsilon*(-2.0*sor12 + sor6)/r;
   }
+
 }
 
 
-void ANNImplementation::CalcPhiD2phiTwo(int const ispec, int const jspec,
-    double const r, double& phi, double& dphi, double& d2phi) const
+/* switch function  */
+void ANNImplementation::switch_fn(double const x_min, double const x_max,
+    double const x, double *const fn, double * const fn_prime) const
 {
-  // get parameters
-  double const A = A_2D_[ispec][jspec];
-  double const B = B_2D_[ispec][jspec];
-  double const p = p_2D_[ispec][jspec];
-  double const q = q_2D_[ispec][jspec];
-  double const sigma = sigma_2D_[ispec][jspec];
-  double const cutoff = sqrt(cutoffSq_2D_[ispec][jspec]);
+  double t;
+  double t_sq;
+  double t_cubic;
 
-  double r_cap = r / sigma;
-
-  if (r >= cutoff) {
-    phi = 0.0;
-    dphi = 0.0;
-    d2phi = 0.0;
+  if (x <= x_min) {
+    *fn = 1;
+    *fn_prime = 0;
+  }
+  else if (x >= x_max) {
+    *fn = 0;
+    *fn_prime = 0;
   }
   else {
-    phi = A * (B * pow(r_cap, -p) - pow(r_cap, -q)) * exp(sigma / (r - cutoff));
-
-    dphi = (q * pow(r_cap, -(q + 1)) - p * B * pow(r_cap, -(p + 1)))
-           - (B * pow(r_cap, -p) - pow(r_cap, -q)) * pow((r - cutoff) / sigma, -2);
-    dphi *= (1 / sigma) * A * exp(sigma / (r - cutoff));
-
-    d2phi = (B * pow(r_cap, -p) - pow(r_cap, -q))
-            * (pow((r - cutoff) / sigma, -4) + 2 * pow((r - cutoff) / sigma, -3))
-            + 2 * (p * B * pow(r_cap, -(p + 1)) - q * pow(r_cap, -(q + 1)))
-            * pow((r - cutoff) / sigma, -2)
-            + (p * (p + 1) * B * pow(r_cap, -(p + 2))
-               - q * (q + 1) * pow(r_cap, -(q + 2)));
-    d2phi *= (1 / (sigma * sigma)) * A * exp(sigma / (r - cutoff));
+    t = (x - x_min)/(x_max - x_min);
+    t_sq = t*t;
+    t_cubic = t_sq*t;
+    *fn = t_cubic*(-10.0 +15*t -6*t_sq) + 1;
+    *fn_prime = t_sq*(-30 + 60*t - 30*t_sq)/(x_max-x_min);
   }
+
 }
 
-
-void ANNImplementation::CalcPhiThree(int const ispec, int const jspec,
-    int const kspec, double const rij, double const rik, double const rjk,
-    double& phi) const
-{
-  // get parameters
-  double const lambda_ij = lambda_2D_[ispec][jspec];
-  double const lambda_ik = lambda_2D_[ispec][kspec];
-  double const gamma_ij = gamma_2D_[ispec][jspec];
-  double const gamma_ik = gamma_2D_[ispec][kspec];
-  double const costheta0_ij = costheta0_2D_[ispec][jspec];
-  double const cutoff_ij = sqrt(cutoffSq_2D_[ispec][jspec]);
-  double const cutoff_ik = sqrt(cutoffSq_2D_[ispec][kspec]);
-  // mix parameters
-  double const lambda = sqrt(fabs(lambda_ij) * fabs(lambda_ik));
-  double const costheta0 = costheta0_ij;  // do not mix
-
-  if (rij < cutoff_ij && rik < cutoff_ik) {
-    double costhetajik = (pow(rij, 2) + pow(rik, 2) - pow(rjk, 2)) / (2 * rij * rik);
-    double diff_costhetajik = costhetajik - costheta0;
-    double exp_ij_ik = exp(gamma_ij / (rij - cutoff_ij) + gamma_ik / (rik - cutoff_ik));
-    phi = lambda * exp_ij_ik * diff_costhetajik * diff_costhetajik;
-  }
-  else {
-    phi = 0.0;
-  }
-}
-
-
-void ANNImplementation::CalcPhiDphiThree(int const ispec, int const jspec,
-    int const kspec, double const rij, double const rik, double const rjk,
-    double& phi, double* const dphi) const
-{
-  // get parameters
-  double const lambda_ij = lambda_2D_[ispec][jspec];
-  double const lambda_ik = lambda_2D_[ispec][kspec];
-  double const gamma_ij = gamma_2D_[ispec][jspec];
-  double const gamma_ik = gamma_2D_[ispec][kspec];
-  double const costheta0_ij = costheta0_2D_[ispec][jspec];
-  double const cutoff_ij = sqrt(cutoffSq_2D_[ispec][jspec]);
-  double const cutoff_ik = sqrt(cutoffSq_2D_[ispec][kspec]);
-  // mix parameters
-  double const lambda = sqrt(fabs(lambda_ij) * fabs(lambda_ik));
-  double const costheta0 = costheta0_ij;  // do not mix
-
-
-  if (rij < cutoff_ij && rik < cutoff_ik) {
-    double costhetajik = (pow(rij, 2) + pow(rik, 2) - pow(rjk, 2)) / (2 * rij * rik);
-    double diff_costhetajik = costhetajik - costheta0;
-
-    /* Derivatives of cosines w.r.t rij, rik, rjk */
-    double costhetajik_ij = (pow(rij, 2) - pow(rik, 2) + pow(rjk, 2))
-                            / (2 * rij * rij * rik);
-    double costhetajik_ik = (pow(rik, 2) - pow(rij, 2) + pow(rjk, 2))
-                            / (2 * rij * rik * rik);
-    double costhetajik_jk = -rjk / (rij * rik);
-
-    /* Variables for simplifying terms */
-    double exp_ij_ik = exp(gamma_ij / (rij - cutoff_ij) + gamma_ik / (rik - cutoff_ik));
-    double d_ij = -gamma_ij* pow(rij - cutoff_ij, -2);
-    double d_ik = -gamma_ik* pow(rik - cutoff_ik, -2);
-
-    phi = lambda * exp_ij_ik * diff_costhetajik * diff_costhetajik;
-
-    dphi[0] = lambda * diff_costhetajik * exp_ij_ik
-              * (d_ij * diff_costhetajik + 2 * costhetajik_ij);
-    dphi[1] = lambda * diff_costhetajik * exp_ij_ik
-              * (d_ik * diff_costhetajik + 2 * costhetajik_ik);
-    dphi[2] = lambda * diff_costhetajik * exp_ij_ik * 2 * costhetajik_jk;
-  }
-  else {
-    phi = 0.0;
-    dphi[0] = 0.0;
-    dphi[1] = 0.0;
-    dphi[2] = 0.0;
-  }
-}
-
-
-// Calculate phi_three(rij, rik, rjk) and its 1st & 2nd derivatives
-// dphi_three(rij, rik, rjk), d2phi_three(rij, rik, rjk)
-//
-// dphi has three components as derivatives of phi w.r.t. rij, rik, rjk
-//
-// d2phi as symmetric Hessian matrix of phi has six components:
-//    [0]=(ij,ij), [3]=(ij,ik), [4]=(ij,jk)
-//                 [1]=(ik,ik), [5]=(ik,jk)
-//                              [2]=(jk,jk)
-
-void ANNImplementation::CalcPhiD2phiThree(int const ispec, int const jspec,
-    int const kspec, double const rij, double const rik, double const rjk,
-    double& phi, double* const dphi, double* const d2phi) const
-{
-  // get parameters
-  double const lambda_ij = lambda_2D_[ispec][jspec];
-  double const lambda_ik = lambda_2D_[ispec][kspec];
-  double const gamma_ij = gamma_2D_[ispec][jspec];
-  double const gamma_ik = gamma_2D_[ispec][kspec];
-  double const costheta0_ij = costheta0_2D_[ispec][jspec];
-  double const cutoff_ij = sqrt(cutoffSq_2D_[ispec][jspec]);
-  double const cutoff_ik = sqrt(cutoffSq_2D_[ispec][kspec]);
-  // mix parameters
-  double const lambda = sqrt(fabs(lambda_ij) * fabs(lambda_ik));
-  double const costheta0 = costheta0_ij;  // do not mix
-
-
-  if (rij < cutoff_ij && rik < cutoff_ik) {
-    double costhetajik = (pow(rij, 2) + pow(rik, 2) - pow(rjk, 2)) / (2 * rij * rik);
-    double diff_costhetajik = costhetajik - costheta0;
-    double diff_costhetajik_2 = diff_costhetajik * diff_costhetajik;
-
-    /* Derivatives of cosines w.r.t. r_ij, r_ik, r_jk */
-    double costhetajik_ij = (pow(rij, 2) - pow(rik, 2) + pow(rjk, 2))
-                            / (2 * rij * rij * rik);
-    double costhetajik_ik = (pow(rik, 2) - pow(rij, 2) + pow(rjk, 2))
-                            / (2 * rij * rik * rik);
-    double costhetajik_jk = -rjk / (rij * rik);
-
-    /* Hessian matrix of cosine */
-    double costhetajik_ij_ij = (pow(rik, 2) - pow(rjk, 2)) / (rij * rij * rij * rik);
-    double costhetajik_ik_ik = (pow(rij, 2) - pow(rjk, 2)) / (rij * rik * rik * rik);
-    double costhetajik_jk_jk = -1 / (rij * rik);
-    double costhetajik_ij_ik = -(pow(rij, 2) + pow(rik, 2) + pow(rjk, 2))
-                               / (2 * rij * rij * rik * rik);
-    double costhetajik_ij_jk = rjk / (rij * rij * rik);
-    double costhetajik_ik_jk = rjk / (rik * rik * rij);
-
-    /* Variables for simplifying terms */
-    double exp_ij_ik = exp(gamma_ij / (rij - cutoff_ij) + gamma_ik / (rik - cutoff_ik));
-    double d_ij = -gamma_ij* pow(rij - cutoff_ij, -2);
-    double d_ik = -gamma_ik* pow(rik - cutoff_ik, -2);
-    double d_ij_2 = d_ij * d_ij;
-    double d_ik_2 = d_ik * d_ik;
-    double dd_ij = 2* gamma_ij* pow(rij - cutoff_ij, -3);
-    double dd_ik = 2* gamma_ik* pow(rik - cutoff_ik, -3);
-
-    phi = lambda * exp_ij_ik * diff_costhetajik * diff_costhetajik;
-
-    dphi[0] = lambda * diff_costhetajik * exp_ij_ik
-              * (d_ij * diff_costhetajik + 2 * costhetajik_ij);
-    dphi[1] = lambda * diff_costhetajik * exp_ij_ik
-              * (d_ik * diff_costhetajik + 2 * costhetajik_ik);
-    dphi[2] = lambda * diff_costhetajik * exp_ij_ik * 2 * costhetajik_jk;
-
-    d2phi[0] = lambda * exp_ij_ik *
-               ((d_ij_2 + dd_ij) * diff_costhetajik_2
-                + (4 * d_ij * costhetajik_ij + 2 * costhetajik_ij_ij) * diff_costhetajik
-                + 2 * costhetajik_ij * costhetajik_ij);
-    d2phi[1] = lambda * exp_ij_ik *
-               ((d_ik_2 + dd_ik) * diff_costhetajik_2
-                + (4 * d_ik * costhetajik_ik + 2 * costhetajik_ik_ik) * diff_costhetajik
-                + 2 * costhetajik_ik * costhetajik_ik);
-    d2phi[2] = lambda * 2 * exp_ij_ik *
-               (costhetajik_jk_jk * diff_costhetajik
-                + costhetajik_jk * costhetajik_jk);
-    d2phi[3] = lambda * exp_ij_ik *
-               (d_ij * d_ik * diff_costhetajik_2
-                + (d_ij * costhetajik_ik + d_ik * costhetajik_ij + costhetajik_ij_ik)
-                * 2 * diff_costhetajik + 2 * costhetajik_ij * costhetajik_ik);
-    d2phi[4] = lambda * exp_ij_ik *
-               ((d_ij * costhetajik_jk + costhetajik_ij_jk)
-                * 2 * diff_costhetajik + 2 * costhetajik_ij * costhetajik_jk);
-    d2phi[5] = lambda * exp_ij_ik *
-               ((d_ik * costhetajik_jk + costhetajik_ik_jk)
-                * 2 * diff_costhetajik + 2 * costhetajik_ik * costhetajik_jk);
-  }
-  else {
-    phi = 0.0;
-    dphi[0] = dphi[1] = dphi[2] = 0.0;
-    d2phi[0] = d2phi[1] = d2phi[2] = d2phi[3] = d2phi[4] = d2phi[5] = 0.0;
-  }
-}

@@ -1,6 +1,6 @@
-#include "helper.h"
-#include "descriptor.h"
 #include <iostream>
+#include <cstdlib>
+#include "descriptor.h"
 
 
 Descriptor::Descriptor(){
@@ -29,7 +29,7 @@ void Descriptor::set_cutfunc(char* name)
 void Descriptor::add_descriptor(char* name, double** values, int row, int col)
 {
 	double ** params = 0;
-	AllocateAndInitialize2DArray(params, row, col);
+	AllocateAndInitialize2DArray<double> (params, row, col);
 	for (int i=0; i<row; i++) {
 		for (int j=0; j<col; j++) {
 			params[i][j] = values[i][j];
@@ -501,7 +501,7 @@ void Descriptor::create_g4_lookup() {
 
         // check wheter zeta is whole number. `fast_power` we implemented only supports integers
         if (check_whole(zeta) == false) {
-          std::cerr<<"Error in KIM Potential: this model only supports integer `zeta` in `g4`."<<std::endl;
+          std::cerr<<"Descriptor: this model only supports integer `zeta` in `g4`."<<std::endl;
           exit(1);
         }
 
@@ -578,7 +578,7 @@ int find_index(double v, std::vector<double>& v_vec, double eps) {
     }
   }
   if (idx == -1) {
-    std::cerr<<"KIM model, cannot find v = " <<v<< " int v_vec."<< std::endl;
+    std::cerr<<"Descriptor: cannot find v = " <<v<< " int v_vec."<< std::endl;
     exit(1);
   }
 

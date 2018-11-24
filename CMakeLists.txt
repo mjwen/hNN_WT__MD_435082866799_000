@@ -48,6 +48,11 @@ endif()
 
 # End preamble
 
+# c++ 11
+set (CMAKE_CXX_STANDARD 11)
+
+# Eigen library
+include_directories(~/Applications/eigen)
 
 set(MODEL_DRIVER_NAME "ANN_WenTadmor__MD_000000111111_000")
 
@@ -61,4 +66,7 @@ target_sources(${MODEL_DRIVER_NAME} PRIVATE
   ANN.cpp
   ANNImplementation.cpp
   helper.cpp
+  descriptor.cpp
+  network.cpp
   )
+
