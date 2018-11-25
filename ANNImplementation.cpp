@@ -458,7 +458,6 @@ int ANNImplementation::ProcessParameterFiles(
   char errorMsg[MAXLINE];
   char name[MAXLINE];
 	double cutoff;
-	double cutoff_samelayer;
 
   // descriptor
 	int numDescTypes;
@@ -499,8 +498,8 @@ int ANNImplementation::ProcessParameterFiles(
   // NN part
 	// cutoff
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%s %lf %lf", name, &cutoff, &cutoff_samelayer);
-  if (ier != 3) {
+  ier = sscanf(nextLine, "%s %lf", name, &cutoff);
+  if (ier != 2) {
     sprintf(errorMsg, "unable to read cutoff from line:\n");
     strcat(errorMsg, nextLine);
     LOG_ERROR(errorMsg);
