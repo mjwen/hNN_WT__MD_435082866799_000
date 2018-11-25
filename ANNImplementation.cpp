@@ -63,6 +63,10 @@ ANNImplementation::ANNImplementation(
   numberUniqueSpeciesPairs_(0),
   cutoff_(NULL),
   lj_A_(0.0),
+  lj_r_up_min_(0.0),
+  lj_r_up_max_(0.0),
+  lj_r_down_min_(0.0),
+  lj_r_down_max_(0.0),
   lj_cutoff_(0.0),
   cutoffSq_2D_(NULL),
   influenceDistance_(0.0),
@@ -354,9 +358,10 @@ int ANNImplementation::ProcessParameterFiles(
 
   // lj part
   getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%s %lf %lf", spec, &lj_A_, &lj_cutoff_);
-  if (ier != 3) {
-    sprintf(errorMsg, "unable to lj parameters from line:\n");
+  ier = sscanf(nextLine, "%s %lf %lf %lf %lf %lf %lf", spec, &lj_A_, &lj_r_up_min_,
+    &lj_r_up_max_, &lj_r_down_min_, &lj_r_down_max_, &lj_cutoff_);
+  if (ier != 7) {
+    sprintf(errorMsg, "unable to read lj parameters from line:\n");
     strcat(errorMsg, nextLine);
     LOG_ERROR(errorMsg);
     return true;
@@ -844,6 +849,10 @@ int ANNImplementation::ConvertUnits(
   if (convertLength != ONE) {
     //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
     //}
+    lj_r_up_min_ *= convertLength;
+    lj_r_up_max_ *= convertLength;
+    lj_r_down_min_ *= convertLength;
+    lj_r_down_max_ *= convertLength;
     lj_cutoff_ *= convertLength;
   }
 

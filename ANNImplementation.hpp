@@ -103,6 +103,10 @@ private:
   double* cutoff_;
   // lj parameters
   double lj_A_;
+  double lj_r_up_min_;
+  double lj_r_up_max_;
+  double lj_r_down_min_;
+  double lj_r_down_max_;
   double lj_cutoff_;
   double** cutoffSq_2D_;
 
@@ -377,14 +381,6 @@ int ANNImplementation::Compute(
   AllocateAndInitialize3DArray<double> (dGCdr_three, Npairs_three, Ndescriptors_three, 3);
 
 
-  // lj part
-  double r_min = 2;
-  double r_max = 4;
-  double cut_min = lj_cutoff_ - 1;
-  double cut_max = lj_cutoff_;
-
-
-
   // calculate generalized coordinates
   //
   // Setup loop over contributing particles
@@ -454,14 +450,14 @@ int ANNImplementation::Compute(
           // switch short range
           double s;
           double ps;
-          switch_fn(r_min, r_max, rijmag, &s, &ps);
+          switch_fn(lj_r_up_min_, lj_r_up_max_, rijmag, &s, &ps);
           double s_up = 1 - s;
           double ps_up = - ps;
 
           // switch cutoff
           double s_down;
           double ps_down;
-          switch_fn(cut_min, cut_max, rijmag, &s_down, &ps_down);
+          switch_fn(lj_r_down_min_, lj_r_down_max_, rijmag, &s_down, &ps_down);
 
           dphi = dphi*s_up*s_down + phi*ps_up*s_down + phi*s_up*ps_down;
           phi = phi*s_up*s_down;
@@ -479,13 +475,13 @@ int ANNImplementation::Compute(
           calc_phi(epsilon, sigma, lj_cutoff_, rijmag, &phi);
           double s;
           double ps;
-          switch_fn(r_min, r_max, rijmag, &s, &ps);
+          switch_fn(lj_r_up_min_, lj_r_up_max_, rijmag, &s, &ps);
           double s_up = 1 - s;
 
           // switch cutoff
           double s_down;
           double ps_down;
-          switch_fn(cut_min, cut_max, rijmag, &s_down, &ps_down);
+          switch_fn(lj_r_down_min_, lj_r_down_max_, rijmag, &s_down, &ps_down);
           phi = phi*s_up*s_down;
         }
 
