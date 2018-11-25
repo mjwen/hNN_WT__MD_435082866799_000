@@ -102,6 +102,10 @@ ANNImplementation::ANNImplementation(
     return;
   }
 
+  // precompute lookup table
+  descriptor_->create_g4_lookup();
+
+
   *ier = SetRefreshMutableValues(modelDriverCreate);
   if (*ier) {
     return;
@@ -112,10 +116,11 @@ ANNImplementation::ANNImplementation(
     return;
   }
 
-  *ier = RegisterKIMParameters(modelDriverCreate);
-  if (*ier) {
-    return;
-  }
+// Do not publish parameters
+//  *ier = RegisterKIMParameters(modelDriverCreate);
+//  if (*ier) {
+//    return;
+//  }
 
   *ier = RegisterKIMFunctions(modelDriverCreate);
   if (*ier) {
@@ -445,6 +450,8 @@ int ANNImplementation::ProcessParameterFiles(
 
 
   int ier;
+  int index;
+
   //int N;
   int endOfFileFlag = 0;
   char nextLine[MAXLINE];
@@ -467,6 +474,20 @@ int ANNImplementation::ProcessParameterFiles(
   //char spec1[MAXLINE], spec2[MAXLINE];
   //int iIndex, jIndex , indx, iiIndex, jjIndex;
   //double nextCutoff;
+
+  // TODO read species from parameter file
+  index = 0;
+  KIM::SpeciesName const specName("C");
+  ier = modelDriverCreate->SetSpeciesCode(specName, index);
+  if (ier) {
+    return ier;
+  }
+  modelSpeciesCodeList_.push_back(index);
+
+  numberModelSpecies_ = 1;
+  numberUniqueSpeciesPairs_ = ((numberModelSpecies_ + 1) * numberModelSpecies_) / 2;
+  AllocateParameterMemory();
+
 
 	// cutoff
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
@@ -577,7 +598,7 @@ int ANNImplementation::ProcessParameterFiles(
       }
 
       // read descriptor params
-      AllocateAndInitialize2DArray(descParams, numParamSets, numParams);
+      AllocateAndInitialize2DArray<double> (descParams, numParamSets, numParams);
       for (int j=0; j<numParamSets; j++) {
         getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
         ier = getXdouble(nextLine, numParams, descParams[j]);
@@ -639,7 +660,7 @@ int ANNImplementation::ProcessParameterFiles(
     }
 
     // read means
-    AllocateAndInitialize1DArray(means, size);
+    AllocateAndInitialize1DArray<double> (means, size);
     for (int i=0; i<size; i++) {
       getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
       ier = sscanf(nextLine, "%lf", &means[i]);
@@ -652,7 +673,7 @@ int ANNImplementation::ProcessParameterFiles(
     }
 
     // read standard deviations
-    AllocateAndInitialize1DArray(stds, size);
+    AllocateAndInitialize1DArray<double> (stds, size);
     for (int i=0; i<size; i++) {
       getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
       ier = sscanf(nextLine, "%lf", &stds[i]);
@@ -728,7 +749,7 @@ int ANNImplementation::ProcessParameterFiles(
 
   // keep probability
   double* keep_prob;
-  AllocateAndInitialize1DArray(keep_prob, numLayers);
+  AllocateAndInitialize1DArray<double> (keep_prob, numLayers);
 
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
   ier = getXdouble(nextLine, numLayers, keep_prob);
@@ -758,7 +779,7 @@ int ANNImplementation::ProcessParameterFiles(
       col = numPerceptrons[i];
     }
 
-    AllocateAndInitialize2DArray(weight, row, col);
+    AllocateAndInitialize2DArray<double> (weight, row, col);
     for (int j=0; j<row; j++) {
       getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
       ier = getXdouble(nextLine, col, weight[j]);
@@ -771,7 +792,7 @@ int ANNImplementation::ProcessParameterFiles(
     }
 
     // bias
-    AllocateAndInitialize1DArray(bias, col);
+    AllocateAndInitialize1DArray<double> (bias, col);
     getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
     ier = getXdouble(nextLine, col, bias);
     if (ier) {
@@ -789,6 +810,7 @@ int ANNImplementation::ProcessParameterFiles(
   }
 
   delete [] numPerceptrons;
+
 
 //TODO delete
 //  network_->echo_input();
@@ -1071,9 +1093,10 @@ const
     modelDriverCreate->SetDestroyPointer(
         KIM::LANGUAGE_NAME::cpp,
         (KIM::Function*)&(ANN::Destroy)) ||
-    modelDriverCreate->SetRefreshPointer(
-        KIM::LANGUAGE_NAME::cpp,
-        (KIM::Function*)&(ANN::Refresh)) ||
+// Do not publish parameters
+//    modelDriverCreate->SetRefreshPointer(
+//        KIM::LANGUAGE_NAME::cpp,
+//        (KIM::Function*)&(ANN::Refresh)) ||
     modelDriverCreate->SetComputePointer(
         KIM::LANGUAGE_NAME::cpp,
         (KIM::Function*)&(ANN::Compute)) ||
@@ -1334,7 +1357,6 @@ void ANNImplementation::calc_phi_dphi(double const epsilon, double const sigma,
     double const cutoff, double const r, double * const phi, double * const dphi) const
 {
   double sor, sor6, sor12;
-
 
   if (r >= cutoff) {
     *phi = 0;

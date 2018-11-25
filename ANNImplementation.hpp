@@ -268,7 +268,7 @@ int ANNImplementation::Compute(
 
 
   int ier = false;
-/*
+
 
   if ((isComputeEnergy == false) &&
       (isComputeParticleEnergy == false) &&
@@ -328,10 +328,10 @@ int ANNImplementation::Compute(
   double*** dcosterm_dr;
   double* eterm;
   double** determ_dr;
-  AllocateAndInitialize2DArray(costerm, n_lambda, n_zeta);
-  AllocateAndInitialize3DArray(dcosterm_dr, n_lambda, n_zeta, 3);
-  AllocateAndInitialize1DArray(eterm, n_eta);
-  AllocateAndInitialize2DArray(determ_dr, n_eta, 3);
+  AllocateAndInitialize2DArray<double> (costerm, n_lambda, n_zeta);
+  AllocateAndInitialize3DArray<double> (dcosterm_dr, n_lambda, n_zeta, 3);
+  AllocateAndInitialize1DArray<double> (eterm, n_eta);
+  AllocateAndInitialize2DArray<double> (determ_dr, n_eta, 3);
 
 
   // number of descriptors
@@ -375,8 +375,8 @@ int ANNImplementation::Compute(
   int approx_numnei = 100;
   int Npairs_two = approx_numnei;
   int Npairs_three = approx_numnei*(approx_numnei-1)/2;
-  AllocateAndInitialize2DArray(dGCdr_two, Npairs_two, Ndescriptors_two);
-  AllocateAndInitialize3DArray(dGCdr_three, Npairs_three, Ndescriptors_three, 3);
+  AllocateAndInitialize2DArray<double> (dGCdr_two, Npairs_two, Ndescriptors_two);
+  AllocateAndInitialize3DArray<double> (dGCdr_three, Npairs_three, Ndescriptors_three, 3);
 
 
   // lj part
@@ -384,6 +384,7 @@ int ANNImplementation::Compute(
   double r_max = 4;
   double cut_min = lj_cutoff_ - 1;
   double cut_max = lj_cutoff_;
+
 
 
   // calculate generalized coordinates
@@ -400,7 +401,7 @@ int ANNImplementation::Compute(
 
     // generalized coords of atom i and its derivatives w.r.t. pair distances
     double* GC;
-    AllocateAndInitialize1DArray(GC, Ndescriptors);
+    AllocateAndInitialize1DArray<double> (GC, Ndescriptors);
 
     int const Npairs_two = numnei;
     int const Npairs_three = numnei*(numnei-1)/2;
@@ -408,8 +409,8 @@ int ANNImplementation::Compute(
     if (numnei > approx_numnei) {
       Deallocate2DArray(dGCdr_two);
       Deallocate3DArray(dGCdr_three);
-      AllocateAndInitialize2DArray(dGCdr_two, Npairs_two, Ndescriptors_two);
-      AllocateAndInitialize3DArray(dGCdr_three, Npairs_three, Ndescriptors_three, 3);
+      AllocateAndInitialize2DArray<double> (dGCdr_two, Npairs_two, Ndescriptors_two);
+      AllocateAndInitialize3DArray<double> (dGCdr_three, Npairs_three, Ndescriptors_three, 3);
       approx_numnei = numnei;
     }
 
@@ -509,9 +510,9 @@ int ANNImplementation::Compute(
 //            return ier;
 //          }
 //        }
-//
-//      }
-//
+
+      }
+
 
       // NN part
 
@@ -954,7 +955,7 @@ int ANNImplementation::Compute(
 
 
 
-*/
+
 
   // everything is good
   ier = false;
