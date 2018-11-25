@@ -62,8 +62,7 @@ ANNImplementation::ANNImplementation(
   : numberModelSpecies_(0),
   numberUniqueSpeciesPairs_(0),
   cutoff_(NULL),
-  lj_epsilon_(0.0),
-  lj_sigma_(0.0),
+  lj_A_(0.0),
   lj_cutoff_(0.0),
   cutoffSq_2D_(NULL),
   influenceDistance_(0.0),
@@ -451,6 +450,7 @@ int ANNImplementation::ProcessParameterFiles(
 
   int ier;
   int index;
+  char spec[MAXLINE];
 
   //int N;
   int endOfFileFlag = 0;
@@ -471,13 +471,20 @@ int ANNImplementation::ProcessParameterFiles(
   int numLayers;
   int* numPerceptrons;
 
-  //char spec1[MAXLINE], spec2[MAXLINE];
-  //int iIndex, jIndex , indx, iiIndex, jjIndex;
-  //double nextCutoff;
 
-  // TODO read species from parameter file
+
+  // lj part
+  getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
+  ier = sscanf(nextLine, "%s %lf %lf", spec, &lj_A_, &lj_cutoff_);
+  if (ier != 3) {
+    sprintf(errorMsg, "unable to lj parameters from line:\n");
+    strcat(errorMsg, nextLine);
+    LOG_ERROR(errorMsg);
+    return true;
+  }
+
   index = 0;
-  KIM::SpeciesName const specName("C");
+  KIM::SpeciesName const specName(spec);
   ier = modelDriverCreate->SetSpeciesCode(specName, index);
   if (ier) {
     return ier;
@@ -489,6 +496,7 @@ int ANNImplementation::ProcessParameterFiles(
   AllocateParameterMemory();
 
 
+  // NN part
 	// cutoff
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
   ier = sscanf(nextLine, "%s %lf %lf", name, &cutoff, &cutoff_samelayer);
@@ -816,17 +824,6 @@ int ANNImplementation::ProcessParameterFiles(
 //  network_->echo_input();
 
 
-  // lj parameters
-  getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
-  ier = sscanf(nextLine, "%lf %lf %lf", &lj_epsilon_, &lj_sigma_, &lj_cutoff_);
-  if (ier != 3) {
-    sprintf(errorMsg, "unable to lj parameters from line:\n");
-    strcat(errorMsg, nextLine);
-    LOG_ERROR(errorMsg);
-    return true;
-  }
-
-
   // everything is good
   ier = false;
   return ier;
@@ -968,7 +965,6 @@ int ANNImplementation::ConvertUnits(
   if (convertLength != ONE) {
     //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
     //}
-    lj_sigma_ *= convertLength;
     lj_cutoff_ *= convertLength;
   }
 
@@ -988,7 +984,7 @@ int ANNImplementation::ConvertUnits(
   if (convertEnergy != ONE) {
     //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
     //}
-      lj_epsilon_ *= convertEnergy;
+      lj_A_ *= convertEnergy;
   }
 
   // register units
@@ -1345,7 +1341,7 @@ void ANNImplementation::calc_phi(double const epsilon, double const sigma,
     sor  = sigma/r;
     sor6 = sor*sor*sor;
     sor6 = sor6*sor6;
-    /*sor12= sor6*sor6; */
+    //sor12= sor6*sor6;
     sor12= 0;
     *phi = 4.0*epsilon*(sor12-sor6);
   }
@@ -1366,7 +1362,7 @@ void ANNImplementation::calc_phi_dphi(double const epsilon, double const sigma,
     sor  = sigma/r;
     sor6 = sor*sor*sor;
     sor6 = sor6*sor6;
-    /*sor12= sor6*sor6;*/
+    //sor12= sor6*sor6;
     sor12= 0;
     *phi = 4.0*epsilon*(sor12-sor6);
     *dphi = 24.0*epsilon*(-2.0*sor12 + sor6)/r;

@@ -41,7 +41,7 @@
 
 #define DIM 3
 #define ONE 1.0
-#define HALF 0.5
+
 
 #define MAX_PARAMETER_FILES 2
 
@@ -102,8 +102,7 @@ private:
   //   Data set in ReadParameterFile routines OR by KIM Simulator
   double* cutoff_;
   // lj parameters
-  double lj_epsilon_;
-  double lj_sigma_;
+  double lj_A_;
   double lj_cutoff_;
 
 
@@ -443,7 +442,9 @@ int ANNImplementation::Compute(
         if(need_dE) {
 
           // compute pair potential and its derivative
-          calc_phi_dphi(lj_epsilon_, lj_sigma_, lj_cutoff_, rijmag, &phi, &dphi);
+          const double epsilon = lj_A_/4.0;
+          const double sigma = 1.;
+          calc_phi_dphi(epsilon, sigma, lj_cutoff_, rijmag, &phi, &dphi);
 
           // switch short range
           double s;
@@ -460,11 +461,13 @@ int ANNImplementation::Compute(
           dphi = dphi*s_up*s_down + phi*ps_up*s_down + phi*s_up*ps_down;
           phi = phi*s_up*s_down;
 
-          dEidr = 0.5*dphi;
+          dEidr = dphi;
 
         }
         else{
-          calc_phi(lj_epsilon_, lj_sigma_, lj_cutoff_, rijmag, &phi);
+          const double epsilon = lj_A_/4.0;
+          const double sigma = 1.;
+          calc_phi(epsilon, sigma, lj_cutoff_, rijmag, &phi);
           double s;
           double ps;
           switch_fn(r_min, r_max, rijmag, &s, &ps);
@@ -479,11 +482,11 @@ int ANNImplementation::Compute(
 
         // particle energy
         if (isComputeParticleEnergy) {
-          particleEnergy[i] += 0.5*phi;
+          particleEnergy[i] += phi;
         }
         // energy
         if (isComputeEnergy) {
-          *energy += 0.5*phi;
+          *energy += phi;
         }
         // forces
         if (isComputeForces) {
