@@ -418,6 +418,9 @@ int ANNImplementation::Compute(
     {
       // adjust index of particle neighbor
       int const j = n1atom[jj];
+      int const jContrib = particleContributing[j];
+
+
       int const jSpecies = particleSpeciesCodes[j];
 
       // cutoff between ij
@@ -433,7 +436,10 @@ int ANNImplementation::Compute(
 
 
       // lj part
-      if (rijmag < lj_cutoff_) {
+
+      if (!(jContrib && (j < i))) { // effective half-list
+
+        if (rijmag > lj_cutoff_) continue;
 
         double phi;
         double dphi;
@@ -460,8 +466,12 @@ int ANNImplementation::Compute(
           dphi = dphi*s_up*s_down + phi*ps_up*s_down + phi*s_up*ps_down;
           phi = phi*s_up*s_down;
 
-          dEidr = dphi;
-
+          if (jContrib == 1) {
+            dEidr = 2*dphi;
+          }
+          else{
+            dEidr = dphi;
+          }
         }
         else{
           const double epsilon = lj_A_/4.0;
@@ -482,11 +492,19 @@ int ANNImplementation::Compute(
         // particle energy
         if (isComputeParticleEnergy) {
           particleEnergy[i] += phi;
+          if (jContrib == 1) {
+            particleEnergy[j] += phi;
+          }
         }
 
         // energy
         if (isComputeEnergy) {
-          *energy += phi;
+          if (jContrib == 1) {
+            *energy += 2*phi;
+          }
+          else {
+            *energy += phi;
+          }
         }
 
         // forces
