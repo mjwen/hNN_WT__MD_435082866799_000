@@ -719,27 +719,22 @@ int ANNImplementation::Compute(
         GC[t] = (GC[t] - descriptor_->features_mean[t]) / descriptor_->features_std[t];
       }
 
-// We moved this below
-//
-//      if (need_dE) {
-//        for (int s=0; s<Npairs_two; s++) {
-//          for (int t=0; t<Ndescriptors_two; t++) {
-//            int desc_idx = map_t_desc_two[t];
-//            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
-//          }
-//        }
-//
-//        for (int s=0; s<Npairs_three; s++) {
-//          for (int t=0; t<Ndescriptors_three; t++) {
-//            int desc_idx = map_t_desc_three[t];
-//            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
-//            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
-//            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
-//          }
-//        }
-//      }
-//
-
+      if (need_dE) {
+        for (int s=0; s<Npairs_two; s++) {
+          for (int t=0; t<Ndescriptors_two; t++) {
+            int desc_idx = map_t_desc_two[t];
+            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
+          }
+        }
+        for (int s=0; s<Npairs_three; s++) {
+          for (int t=0; t<Ndescriptors_three; t++) {
+            int desc_idx = map_t_desc_three[t];
+            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
+            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
+            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
+          }
+        }
+      }
     }
 
 #ifdef DEBUG
@@ -806,11 +801,7 @@ int ANNImplementation::Compute(
         double dEdr_two = 0;
         for (int t=0; t<Ndescriptors_two; t++) {
           int desc_idx = map_t_desc_two[t];
-          if (descriptor_->center_and_normalize) {
-            dEdr_two += dGCdr_two[s_two][t] * (dEdGC[desc_idx] / descriptor_->features_std[desc_idx]);
-          } else {
-            dEdr_two += dGCdr_two[s_two][t] * dEdGC[desc_idx];
-          }
+          dEdr_two += dGCdr_two[s_two][t] * dEdGC[desc_idx];
         }
 
         // forces
@@ -873,16 +864,9 @@ int ANNImplementation::Compute(
           double dEdr_three[3] = {0, 0, 0};
           for (int t=0; t<Ndescriptors_three; t++) {
             int desc_idx = map_t_desc_three[t];
-            if (descriptor_->center_and_normalize) {
-              dEdr_three[0] += dGCdr_three[s_three][t][0] * (dEdGC[desc_idx] / descriptor_->features_std[desc_idx]);   // dEdrij
-              dEdr_three[1] += dGCdr_three[s_three][t][1] * (dEdGC[desc_idx] / descriptor_->features_std[desc_idx]);   // dEdrik
-              dEdr_three[2] += dGCdr_three[s_three][t][2] * (dEdGC[desc_idx] / descriptor_->features_std[desc_idx]);   // dEdrjk
-
-            } else {
-              dEdr_three[0] += dGCdr_three[s_three][t][0] * dEdGC[desc_idx];   // dEdrij
-              dEdr_three[1] += dGCdr_three[s_three][t][1] * dEdGC[desc_idx];   // dEdrik
-              dEdr_three[2] += dGCdr_three[s_three][t][2] * dEdGC[desc_idx];   // dEdrjk
-            }
+            dEdr_three[0] += dGCdr_three[s_three][t][0] * dEdGC[desc_idx];   // dEdrij
+            dEdr_three[1] += dGCdr_three[s_three][t][1] * dEdGC[desc_idx];   // dEdrik
+            dEdr_three[2] += dGCdr_three[s_three][t][2] * dEdGC[desc_idx];   // dEdrjk
           }
 
 
