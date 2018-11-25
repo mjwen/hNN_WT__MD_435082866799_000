@@ -127,13 +127,18 @@ void Descriptor::sym_g2(double eta, double Rs, double r, double rcut, double &ph
 void Descriptor::sym_d_g2(const double eta, const double Rs, const double r, const double rcut,
     const double fc, const double dfc, double &phi, double &dphi)
 {
-  double eterm = exp(-eta*(r-Rs)*(r-Rs));
-  double determ = -2*eta*(r-Rs)*eterm;
-  //double fc = cutoff(r, rcut);
-  //double dfc = d_cutoff(r, rcut);
-
-  phi = eterm*fc;
-  dphi = determ*fc + eterm*dfc;
+  if (r > rcut) {
+    phi = 0.;
+    dphi = 0.;
+  }
+  else {
+    double eterm = exp(-eta*(r-Rs)*(r-Rs));
+    double determ = -2*eta*(r-Rs)*eterm;
+    //double fc = cutoff(r, rcut);
+    //double dfc = d_cutoff(r, rcut);
+    phi = eterm*fc;
+    dphi = determ*fc + eterm*dfc;
+  }
 }
 
 void Descriptor::sym_g3(double kappa, double r, double rcut, double &phi) {

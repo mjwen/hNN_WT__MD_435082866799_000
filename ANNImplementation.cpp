@@ -326,127 +326,7 @@ int ANNImplementation::ProcessParameterFiles(
     FILE* const parameterFilePointers[MAX_PARAMETER_FILES])
 {
 
-//  int N, ier;
-//  int endOfFileFlag = 0;
-//  char spec1[MAXLINE], spec2[MAXLINE], nextLine[MAXLINE];
-//  int iIndex, jIndex, indx;
-//  double next_A, next_B, next_p, next_q, next_sigma, next_lambda, next_gamma;
-//  double next_costheta0, next_cutoff;
-//
-//  (void) numberParameterFiles; // avoid not used warning
-//
-//  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-//  ier = sscanf(nextLine, "%d", &N);
-//  if (ier != 1) {
-//    sprintf(nextLine, "unable to read first line of the parameter file");
-//    ier = true;
-//    LOG_ERROR(nextLine);
-//    fclose(parameterFilePointers[0]);
-//    return ier;
-//  }
-//  numberModelSpecies_ = N;
-//  numberUniqueSpeciesPairs_ = ((numberModelSpecies_ + 1) * numberModelSpecies_) / 2;
-//  AllocateParameterMemory();
-//
-//  // set all values of p_ to -1.1e10 for later check that we have read all params
-//  for (int i = 0; i < ((N + 1) * N / 2); i++) {
-//    p_[i] = -1.1e10;
-//  }
-//
-//  // keep track of known species
-//  std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator> modelSpeciesMap;
-//  int index = 0;   // species code integer code starting from 0
-//
-//  // Read and process data lines
-//  getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-//  while (endOfFileFlag == 0)
-//  {
-//    ier = sscanf(nextLine, "%s %s %lg %lg %lg %lg %lg %lg %lg %lg %lg",
-//        spec1, spec2, &next_A, &next_B, &next_p, &next_q, &next_sigma,
-//        &next_lambda, &next_gamma, &next_costheta0, &next_cutoff);
-//    if (ier != 11) {
-//      sprintf(nextLine, "error reading lines of the parameter file");
-//      LOG_ERROR(nextLine);
-//      return true;
-//    }
-//
-//    // convert species strings to proper type instances
-//    KIM::SpeciesName const specName1(spec1);
-//    KIM::SpeciesName const specName2(spec2);
-//     if ((specName1.String() == "unknown") ||
-//         (specName2.String() == "unknown") ) {
-//      sprintf(nextLine, "error parameter file: get unknown species");
-//      LOG_ERROR(nextLine);
-//      return true;
-//    }
-//
-//
-//    // check for new species
-//    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
-//    const_iterator iIter = modelSpeciesMap.find(specName1);
-//    if (iIter == modelSpeciesMap.end()) {
-//      modelSpeciesMap[specName1] = index;
-//      modelSpeciesCodeList_.push_back(index);
-//
-//      ier = modelDriverCreate->SetSpeciesCode(specName1, index);
-//      if (ier) {
-//        return ier;
-//      }
-//      iIndex = index;
-//      index++;
-//    }
-//    else {
-//      iIndex = modelSpeciesMap[specName1];
-//    }
-//
-//    std::map<KIM::SpeciesName const, int, KIM::SPECIES_NAME::Comparator>::
-//    const_iterator jIter = modelSpeciesMap.find(specName2);
-//    if (jIter == modelSpeciesMap.end()) {
-//      modelSpeciesMap[specName2] = index;
-//      modelSpeciesCodeList_.push_back(index);
-//
-//      ier = modelDriverCreate->SetSpeciesCode(specName2, index);
-//      if (ier) {
-//        return ier;
-//      }
-//      jIndex = index;
-//      index++;
-//    }
-//    else {
-//      jIndex = modelSpeciesMap[specName2];
-//    }
-//
-//    if (iIndex >= jIndex) {
-//      indx = jIndex * N + iIndex - (jIndex * jIndex + jIndex) / 2;
-//    }
-//    else {
-//      indx = iIndex * N + jIndex - (iIndex * iIndex + iIndex) / 2;
-//    }
-//    A_[indx] = next_A;
-//    B_[indx] = next_B;
-//    p_[indx] = next_p;
-//    q_[indx] = next_q;
-//    sigma_[indx] = next_sigma;
-//    lambda_[indx] = next_lambda;
-//    gamma_[indx] = next_gamma;
-//    costheta0_[indx] = next_costheta0;
-//    cutoff_[indx] = next_cutoff;
-//
-//    getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
-//  }
-//
-//  // check we have read all parameters
-//  for (int i = 0; i < ((N + 1) * N / 2); i++) {
-//    if (p_[i] < -1e10) {
-//      sprintf(nextLine, "error: not enough parameter data.\n");
-//      sprintf(nextLine, "%d species requires %d data lines.", N, (N + 1) * N / 2);
-//      LOG_ERROR(nextLine);
-//      return true;
-//    }
-//  }
-//
-
-
+  (void) numberParameterFiles; // avoid not used warning
 
   int ier;
   int index;
@@ -1068,6 +948,8 @@ int ANNImplementation::RegisterKIMComputeArgumentsSettings(
 int ANNImplementation::RegisterKIMParameters(
     KIM::ModelDriverCreate* const modelDriverCreate)
 {
+
+  (void) modelDriverCreate; // avoid not used warning
   // Do not support the publish of parameters
 
   // everything is good

@@ -104,6 +104,7 @@ private:
   // lj parameters
   double lj_A_;
   double lj_cutoff_;
+  double** cutoffSq_2D_;
 
 
 
@@ -117,8 +118,6 @@ private:
   // ANNImplementation: values (changed only by Refresh())
   double influenceDistance_;
   int modelWillNotRequestNeighborsOfNoncontributingParticles_;
-
-  double** cutoffSq_2D_;
 
 
   // Mutable values that can change with each call to Refresh() and Compute()
@@ -484,10 +483,12 @@ int ANNImplementation::Compute(
         if (isComputeParticleEnergy) {
           particleEnergy[i] += phi;
         }
+
         // energy
         if (isComputeEnergy) {
           *energy += phi;
         }
+
         // forces
         if (isComputeForces) {
           for (int k = 0; k < DIM; ++k) {
@@ -496,25 +497,26 @@ int ANNImplementation::Compute(
           }
         }
 
-        // TODO add virial and particle virial
+        //  virial
+        if (isComputeVirial == true) {
+          ProcessVirialTerm(dEidr, rijmag, rij, i, j, virial);
+        }
 
+        //  particleVirial
+        if (isComputeParticleVirial == true) {
+          ProcessParticleVirialTerm(dEidr, rijmag, rij, i, j, particleVirial);
+        }
 
-//        // dEdr
-//        if (isComputeProcess_dEdr) {
-//          const double* prij = rij;
-//          ier = pkim->process_dEdr(const_cast<KIM_API_model**>(&pkim),
-//              const_cast<double*>(&dEidr),
-//              const_cast<double*>(&rijmag),
-//              const_cast<double**>(&prij),
-//              const_cast<int*>(&i),
-//              const_cast<int*>(&j));
-//          if (ier < KIM_STATUS_OK) {
-//            pkim->report_error(__LINE__, __FILE__, "process_dEdr", ier);
-//            return ier;
-//          }
-//        }
+        // process_dEdr
+        if (isComputeProcess_dEdr == true) {
+          ier = modelComputeArguments->ProcessDEDrTerm(dEidr, rijmag, rij, i, j);
+          if (ier) {
+            LOG_ERROR("ProcessDEdr");
+            return ier;
+          }
+        }
 
-      }
+      }  // rij < cutoff
 
 
       // NN part
@@ -789,7 +791,6 @@ int ANNImplementation::Compute(
 
         // Compute rij
         double rij[DIM];
-        double const * prij = rij;
         for (int dim = 0; dim < DIM; ++dim) {
           rij[dim] = coordinates[j][dim] - coordinates[i][dim];
         }
@@ -821,22 +822,25 @@ int ANNImplementation::Compute(
           }
         }
 
-        // TODO virial and particle virial
+        //  virial
+        if (isComputeVirial == true) {
+          ProcessVirialTerm(dEdr_two, rijmag, rij, i, j, virial);
+        }
 
-//        // process_dEdr
-//        if (isComputeProcess_dEdr) {
-//          int ier = pkim->process_dEdr(const_cast<KIM_API_model**>(&pkim),
-//              const_cast<double*>(&dEdr_two),
-//              const_cast<double*>(&rijmag),
-//              const_cast<double**>(&prij),
-//              const_cast<int*>(&i),
-//              const_cast<int*>(&j));
-//          if (ier < KIM_STATUS_OK) {
-//            pkim->report_error(__LINE__, __FILE__, "process_dEdr", ier);
-//            return ier;
-//          }
-//        }
-//
+        //  particleVirial
+        if (isComputeParticleVirial == true) {
+          ProcessParticleVirialTerm(dEdr_two, rijmag, rij, i, j, particleVirial);
+        }
+
+        // process_dEdr
+        if (isComputeProcess_dEdr == true) {
+          ier = modelComputeArguments->ProcessDEDrTerm(dEdr_two, rijmag, rij, i, j);
+          if (ier) {
+            LOG_ERROR("ProcessDEdr");
+            return ier;
+          }
+        }
+
 
         // three-body descriptors
         for (int kk = jj+1; kk < numnei; ++kk) {
@@ -850,8 +854,6 @@ int ANNImplementation::Compute(
           // Compute rik, rjk and their squares
           double rik[DIM];
           double rjk[DIM];
-          const double* prik = rik;
-          const double* prjk = rjk;
           for (int dim = 0; dim < DIM; ++dim) {
             rik[dim] = coordinates[k][dim] - coordinates[i][dim];
             rjk[dim] = coordinates[k][dim] - coordinates[j][dim];
@@ -896,45 +898,31 @@ int ANNImplementation::Compute(
             }
           }
 
-          // TODO virial and particle virial
+          // virial
+          if (isComputeVirial == true) {
+            ProcessVirialTerm(dEdr_three[0], rijmag, rij, i, j, virial);
+            ProcessVirialTerm(dEdr_three[1], rikmag, rik, i, k, virial);
+            ProcessVirialTerm(dEdr_three[2], rjkmag, rjk, j, k, virial);
+          }
+
+          // particleVirial
+          if (isComputeParticleVirial == true) {
+            ProcessParticleVirialTerm(dEdr_three[0], rijmag, rij, i, j, particleVirial);
+            ProcessParticleVirialTerm(dEdr_three[1], rikmag, rik, i, k, particleVirial);
+            ProcessParticleVirialTerm(dEdr_three[2], rjkmag, rjk, j, k, particleVirial);
+          }
 
           // process_dEdr
-//          if (isComputeProcess_dEdr) {
-//            int ier;
-//            ier = pkim->process_dEdr(const_cast<KIM_API_model**>(&pkim),
-//                const_cast<double*>(&dEdr_three[0]),
-//                const_cast<double*>(&rijmag),
-//                const_cast<double**>(&prij),
-//                const_cast<int*>(&i),
-//                const_cast<int*>(&j));
-//            if (ier < KIM_STATUS_OK) {
-//              pkim->report_error(__LINE__, __FILE__, "process_dEdr", ier);
-//              return ier;
-//            }
-//
-//            ier = pkim->process_dEdr(const_cast<KIM_API_model**>(&pkim),
-//                const_cast<double*>(&dEdr_three[1]),
-//                const_cast<double*>(&rikmag),
-//                const_cast<double**>(&prik),
-//                const_cast<int*>(&i),
-//                const_cast<int*>(&k));
-//            if (ier < KIM_STATUS_OK) {
-//              pkim->report_error(__LINE__, __FILE__, "process_dEdr", ier);
-//              return ier;
-//            }
-//
-//            ier = pkim->process_dEdr(const_cast<KIM_API_model**>(&pkim),
-//                const_cast<double*>(&dEdr_three[2]),
-//                const_cast<double*>(&rjkmag),
-//                const_cast<double**>(&prjk),
-//                const_cast<int*>(&j),
-//                const_cast<int*>(&k));
-//            if (ier < KIM_STATUS_OK) {
-//              pkim->report_error(__LINE__, __FILE__, "process_dEdr", ier);
-//              return ier;
-//            }
-//          }
-//
+          if (isComputeProcess_dEdr == true) {
+            ier = modelComputeArguments->ProcessDEDrTerm(dEdr_three[0], rijmag, rij, i, j)
+              || modelComputeArguments->ProcessDEDrTerm(dEdr_three[1], rikmag, rik, i, k)
+              || modelComputeArguments->ProcessDEDrTerm(dEdr_three[2], rjkmag, rjk, j, k);
+            if (ier) {
+              LOG_ERROR("ProcessDEdr");
+              return ier;
+            }
+          }
+
 
         }  // loop over kk
       }  // loop over jj
