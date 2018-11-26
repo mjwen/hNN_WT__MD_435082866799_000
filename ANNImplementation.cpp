@@ -52,13 +52,13 @@
 #define KIM_LOGGER_OBJECT_NAME modelDriverCreate
 
 ANNImplementation::ANNImplementation(
-  KIM::ModelDriverCreate* const modelDriverCreate,
-  KIM::LengthUnit const requestedLengthUnit,
-  KIM::EnergyUnit const requestedEnergyUnit,
-  KIM::ChargeUnit const requestedChargeUnit,
-  KIM::TemperatureUnit const requestedTemperatureUnit,
-  KIM::TimeUnit const requestedTimeUnit,
-  int* const ier)
+    KIM::ModelDriverCreate* const modelDriverCreate,
+    KIM::LengthUnit const requestedLengthUnit,
+    KIM::EnergyUnit const requestedEnergyUnit,
+    KIM::ChargeUnit const requestedChargeUnit,
+    KIM::TemperatureUnit const requestedTemperatureUnit,
+    KIM::TimeUnit const requestedTimeUnit,
+    int* const ier)
   : numberModelSpecies_(0),
   numberUniqueSpeciesPairs_(0),
   cutoff_(NULL),
@@ -74,8 +74,8 @@ ANNImplementation::ANNImplementation(
   cachedNumberOfParticles_(0)
 {
   // create descriptor and network classes
-	descriptor_ = new Descriptor();
-	network_ = new NeuralNetwork();
+  descriptor_ = new Descriptor();
+  network_ = new NeuralNetwork();
 
 
   FILE* parameterFilePointers[MAX_PARAMETER_FILES];
@@ -141,8 +141,8 @@ ANNImplementation::~ANNImplementation()
 { // note: it is ok to delete a null pointer and we have ensured that
   // everything is initialized to null
 
-  Deallocate1DArray<double>(cutoff_);
-  Deallocate2DArray<double>(cutoffSq_2D_);
+  Deallocate1DArray<double> (cutoff_);
+  Deallocate2DArray<double> (cutoffSq_2D_);
 }
 
 
@@ -243,7 +243,8 @@ int ANNImplementation::ComputeArgumentsDestroy(
 const
 {
   int ier;
-  (void) modelComputeArgumentsDestroy; // avoid not used warning
+
+  (void)modelComputeArgumentsDestroy;  // avoid not used warning
 
   // nothing else to do for this case
 
@@ -270,7 +271,7 @@ void ANNImplementation::AllocatePrivateParameterMemory()
 void ANNImplementation::AllocateParameterMemory()
 { // allocate memory for data
   AllocateAndInitialize1DArray<double> (cutoff_, numberUniqueSpeciesPairs_);
-	AllocateAndInitialize2DArray<double> (cutoffSq_2D_, numberModelSpecies_, numberModelSpecies_);
+  AllocateAndInitialize2DArray<double> (cutoffSq_2D_, numberModelSpecies_, numberModelSpecies_);
 }
 
 
@@ -329,8 +330,7 @@ int ANNImplementation::ProcessParameterFiles(
     int const numberParameterFiles,
     FILE* const parameterFilePointers[MAX_PARAMETER_FILES])
 {
-
-  (void) numberParameterFiles; // avoid not used warning
+  (void)numberParameterFiles;  // avoid not used warning
 
   int ier;
   int index;
@@ -341,14 +341,14 @@ int ANNImplementation::ProcessParameterFiles(
   char nextLine[MAXLINE];
   char errorMsg[MAXLINE];
   char name[MAXLINE];
-	double cutoff;
+  double cutoff;
 
   // descriptor
-	int numDescTypes;
-	int numDescs;
-	int numParams;
-	int numParamSets;
-	double** descParams = NULL;
+  int numDescTypes;
+  int numDescs;
+  int numParams;
+  int numParamSets;
+  double** descParams = NULL;
 
   // network
   int numLayers;
@@ -359,7 +359,7 @@ int ANNImplementation::ProcessParameterFiles(
   // lj part
   getNextDataLine(parameterFilePointers[1], nextLine, MAXLINE, &endOfFileFlag);
   ier = sscanf(nextLine, "%s %lf %lf %lf %lf %lf %lf", spec, &lj_A_, &lj_r_up_min_,
-    &lj_r_up_max_, &lj_r_down_min_, &lj_r_down_max_, &lj_cutoff_);
+      &lj_r_up_max_, &lj_r_down_min_, &lj_r_down_max_, &lj_cutoff_);
   if (ier != 7) {
     sprintf(errorMsg, "unable to read lj parameters from line:\n");
     strcat(errorMsg, nextLine);
@@ -381,7 +381,7 @@ int ANNImplementation::ProcessParameterFiles(
 
 
   // NN part
-	// cutoff
+  // cutoff
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
   ier = sscanf(nextLine, "%s %lf", name, &cutoff);
   if (ier != 2) {
@@ -393,24 +393,19 @@ int ANNImplementation::ProcessParameterFiles(
 
   // register cutoff
   lowerCase(name);
-  if (strcmp(name, "cos") != 0 && strcmp(name, "exp") != 0)
-  {
+  if (strcmp(name, "cos") != 0 && strcmp(name, "exp") != 0) {
     sprintf(errorMsg, "unsupported cutoff type. Expecting `cos', or `exp' "
         "given %s.\n", name);
     LOG_ERROR(errorMsg);
     return true;
   }
-	descriptor_->set_cutfunc(name);
+  descriptor_->set_cutfunc(name);
 
-//TODO modifiy this such that each pair has its own cutoff
-// use of numberUniqueSpeciesPairs is not good. Since it requires the Model
-// provide all the params that the Driver supports. number of species should
-// be read in from the input file.
-  for (int i=0; i<numberUniqueSpeciesPairs_; i++) {
-	  cutoff_[i] = cutoff;
+  for (int i = 0; i < numberUniqueSpeciesPairs_; i++) {
+    cutoff_[i] = cutoff;
   }
 
-	// number of descriptor types
+  // number of descriptor types
   getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
   ier = sscanf(nextLine, "%d", &numDescTypes);
   if (ier != 1) {
@@ -421,7 +416,7 @@ int ANNImplementation::ProcessParameterFiles(
   }
 
   // descriptor
-  for (int i=0; i<numDescTypes; i++) {
+  for (int i = 0; i < numDescTypes; i++) {
     // descriptor name and parameter dimensions
     getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
 
@@ -433,8 +428,8 @@ int ANNImplementation::ProcessParameterFiles(
       LOG_ERROR(errorMsg);
       return true;
     }
-    lowerCase(name); // change to lower case name
-    if (strcmp(name, "g1") == 0) {  // G1
+    lowerCase(name);               // change to lower case name
+    if (strcmp(name, "g1") == 0) { // G1
       descriptor_->add_descriptor(name, NULL, 1, 0);
     }
     else{
@@ -491,7 +486,7 @@ int ANNImplementation::ProcessParameterFiles(
 
       // read descriptor params
       AllocateAndInitialize2DArray<double> (descParams, numParamSets, numParams);
-      for (int j=0; j<numParamSets; j++) {
+      for (int j = 0; j < numParamSets; j++) {
         getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
         ier = getXdouble(nextLine, numParams, descParams[j]);
         if (ier) {
@@ -525,15 +520,15 @@ int ANNImplementation::ProcessParameterFiles(
   bool do_center_and_normalize;
   if (strcmp(name, "true") == 0) {
     do_center_and_normalize = true;
-  } else {
+  }
+  else {
     do_center_and_normalize = false;
   }
 
-  int size=0;
+  int size = 0;
   double* means = NULL;
   double* stds = NULL;
-  if (do_center_and_normalize)
-  {
+  if (do_center_and_normalize) {
     // size of the data, this should be equal to numDescs
     getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
     ier = sscanf(nextLine, "%d", &size);
@@ -553,7 +548,7 @@ int ANNImplementation::ProcessParameterFiles(
 
     // read means
     AllocateAndInitialize1DArray<double> (means, size);
-    for (int i=0; i<size; i++) {
+    for (int i = 0; i < size; i++) {
       getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
       ier = sscanf(nextLine, "%lf", &means[i]);
       if (ier != 1) {
@@ -566,7 +561,7 @@ int ANNImplementation::ProcessParameterFiles(
 
     // read standard deviations
     AllocateAndInitialize1DArray<double> (stds, size);
-    for (int i=0; i<size; i++) {
+    for (int i = 0; i < size; i++) {
       getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
       ier = sscanf(nextLine, "%lf", &stds[i]);
       if (ier != 1) {
@@ -579,7 +574,7 @@ int ANNImplementation::ProcessParameterFiles(
   }
 
   // store info into descriptor class
-	descriptor_->set_center_and_normalize(do_center_and_normalize, size, means, stds);
+  descriptor_->set_center_and_normalize(do_center_and_normalize, size, means, stds);
   Deallocate1DArray(means);
   Deallocate1DArray(stds);
 
@@ -626,11 +621,10 @@ int ANNImplementation::ProcessParameterFiles(
 
   // register activation function
   lowerCase(name);
-  if (strcmp(name, "sigmoid") != 0
-      && strcmp(name, "tanh") != 0
-      && strcmp(name, "relu") != 0
-      && strcmp(name, "elu") != 0)
-  {
+  if (strcmp(name, "sigmoid") != 0 &&
+      strcmp(name, "tanh") != 0 &&
+      strcmp(name, "relu") != 0 &&
+      strcmp(name, "elu") != 0) {
     sprintf(errorMsg, "unsupported activation function. Expecting `sigmoid`, `tanh` "
         " `relu` or `elu`, given %s.\n", name);
     LOG_ERROR(errorMsg);
@@ -656,23 +650,23 @@ int ANNImplementation::ProcessParameterFiles(
 
 
   // weights and biases
-  for (int i=0; i<numLayers; i++) {
-
+  for (int i = 0; i < numLayers; i++) {
     double** weight;
-	  double* bias;
+    double* bias;
     int row;
     int col;
 
-    if (i==0) {
+    if (i == 0) {
       row = numDescs;
       col = numPerceptrons[i];
-    } else {
-      row = numPerceptrons[i-1];
+    }
+    else {
+      row = numPerceptrons[i - 1];
       col = numPerceptrons[i];
     }
 
     AllocateAndInitialize2DArray<double> (weight, row, col);
-    for (int j=0; j<row; j++) {
+    for (int j = 0; j < row; j++) {
       getNextDataLine(parameterFilePointers[0], nextLine, MAXLINE, &endOfFileFlag);
       ier = getXdouble(nextLine, col, weight[j]);
       if (ier) {
@@ -727,7 +721,7 @@ void ANNImplementation::getNextDataLine(
     }
 
     while ((nextLinePtr[0] == ' ' || nextLinePtr[0] == '\t') ||
-        (nextLinePtr[0] == '\n' || nextLinePtr[0] == '\r'))
+           (nextLinePtr[0] == '\n' || nextLinePtr[0] == '\r'))
     {
       nextLinePtr = (nextLinePtr + 1);
     }
@@ -738,20 +732,21 @@ void ANNImplementation::getNextDataLine(
   if (pch != NULL) {
     *pch = '\0';
   }
-
 }
+
 
 //******************************************************************************
 int ANNImplementation::getXdouble(char* linePtr, const int N, double* list)
 {
   int ier;
-  char * pch;
+  char* pch;
   char line[MAXLINE];
   int i = 0;
 
   strcpy(line, linePtr);
   pch = strtok(line, " \t\n\r");
-  while (pch != NULL) {
+  while (pch != NULL)
+  {
     ier = sscanf(pch, "%lf", &list[i]);
     if (ier != 1) {
       return true;
@@ -767,17 +762,19 @@ int ANNImplementation::getXdouble(char* linePtr, const int N, double* list)
   return false;
 }
 
+
 //******************************************************************************
 int ANNImplementation::getXint(char* linePtr, const int N, int* list)
 {
   int ier;
-  char * pch;
+  char* pch;
   char line[MAXLINE];
   int i = 0;
 
   strcpy(line, linePtr);
   pch = strtok(line, " \t\n\r");
-  while (pch != NULL) {
+  while (pch != NULL)
+  {
     ier = sscanf(pch, "%d", &list[i]);
     if (ier != 1) {
       return true;
@@ -792,13 +789,15 @@ int ANNImplementation::getXint(char* linePtr, const int N, int* list)
   return false;
 }
 
+
 //******************************************************************************
 void ANNImplementation::lowerCase(char* linePtr)
 {
-  for(int i=0; linePtr[i]; i++){
+  for (int i = 0; linePtr[i]; i++) {
     linePtr[i] = tolower(linePtr[i]);
   }
 }
+
 
 //******************************************************************************
 void ANNImplementation::CloseParameterFiles(
@@ -847,8 +846,6 @@ int ANNImplementation::ConvertUnits(
   }
   // convert to active units
   if (convertLength != ONE) {
-    //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
-    //}
     lj_r_up_min_ *= convertLength;
     lj_r_up_max_ *= convertLength;
     lj_r_down_min_ *= convertLength;
@@ -870,9 +867,7 @@ int ANNImplementation::ConvertUnits(
   }
   // convert to active units
   if (convertEnergy != ONE) {
-    //for (int i = 0; i < numberUniqueSpeciesPairs_; ++i) {
-    //}
-      lj_A_ *= convertEnergy;
+    lj_A_ *= convertEnergy;
   }
 
   // register units
@@ -948,7 +943,7 @@ int ANNImplementation::RegisterKIMComputeArgumentsSettings(
 
 //******************************************************************************
 // helper macro
-#define SNUM( x  ) static_cast<std::ostringstream &>(    \
+#define SNUM(x) static_cast<std::ostringstream&> ( \
     std::ostringstream() << std::dec << x).str()
 
 #undef  KIM_LOGGER_OBJECT_NAME
@@ -957,8 +952,7 @@ int ANNImplementation::RegisterKIMComputeArgumentsSettings(
 int ANNImplementation::RegisterKIMParameters(
     KIM::ModelDriverCreate* const modelDriverCreate)
 {
-
-  (void) modelDriverCreate; // avoid not used warning
+  (void)modelDriverCreate;  // avoid not used warning
   // Do not support the publish of parameters
 
   // everything is good
@@ -1034,7 +1028,7 @@ int ANNImplementation::SetRefreshMutableValues(
 
   // compare with lj cutoff
 
-  if(influenceDistance_ < lj_cutoff_) {
+  if (influenceDistance_ < lj_cutoff_) {
     influenceDistance_ = lj_cutoff_;
   }
 
@@ -1219,28 +1213,26 @@ int ANNImplementation::GetComputeIndex(
 //==============================================================================
 
 void ANNImplementation::calc_phi(double const epsilon, double const sigma,
-    double const cutoff, double const r, double * const phi) const
+    double const cutoff, double const r, double* const phi) const
 {
-
   double sor, sor6, sor12;
 
   if (r >= cutoff) {
     *phi = 0;
   }
   else {
-    sor  = sigma/r;
-    sor6 = sor*sor*sor;
-    sor6 = sor6*sor6;
+    sor = sigma / r;
+    sor6 = sor * sor * sor;
+    sor6 = sor6 * sor6;
     //sor12= sor6*sor6;
-    sor12= 0;
-    *phi = 4.0*epsilon*(sor12-sor6);
+    sor12 = 0;
+    *phi = 4.0 * epsilon * (sor12 - sor6);
   }
-
 }
 
 
 void ANNImplementation::calc_phi_dphi(double const epsilon, double const sigma,
-    double const cutoff, double const r, double * const phi, double * const dphi) const
+    double const cutoff, double const r, double* const phi, double* const dphi) const
 {
   double sor, sor6, sor12;
 
@@ -1249,21 +1241,19 @@ void ANNImplementation::calc_phi_dphi(double const epsilon, double const sigma,
     *dphi = 0;
   }
   else {
-    sor  = sigma/r;
-    sor6 = sor*sor*sor;
-    sor6 = sor6*sor6;
+    sor = sigma / r;
+    sor6 = sor * sor * sor;
+    sor6 = sor6 * sor6;
     //sor12= sor6*sor6;
-    sor12= 0;
-    *phi = 4.0*epsilon*(sor12-sor6);
-    *dphi = 24.0*epsilon*(-2.0*sor12 + sor6)/r;
+    sor12 = 0;
+    *phi = 4.0 * epsilon * (sor12 - sor6);
+    *dphi = 24.0 * epsilon * (-2.0 * sor12 + sor6) / r;
   }
-
 }
 
 
-/* switch function  */
 void ANNImplementation::switch_fn(double const x_min, double const x_max,
-    double const x, double *const fn, double * const fn_prime) const
+    double const x, double* const fn, double* const fn_prime) const
 {
   double t;
   double t_sq;
@@ -1278,12 +1268,10 @@ void ANNImplementation::switch_fn(double const x_min, double const x_max,
     *fn_prime = 0;
   }
   else {
-    t = (x - x_min)/(x_max - x_min);
-    t_sq = t*t;
-    t_cubic = t_sq*t;
-    *fn = t_cubic*(-10.0 +15*t -6*t_sq) + 1;
-    *fn_prime = t_sq*(-30 + 60*t - 30*t_sq)/(x_max-x_min);
+    t = (x - x_min) / (x_max - x_min);
+    t_sq = t * t;
+    t_cubic = t_sq * t;
+    *fn = t_cubic * (-10.0 + 15 * t - 6 * t_sq) + 1;
+    *fn_prime = t_sq * (-30 + 60 * t - 30 * t_sq) / (x_max - x_min);
   }
-
 }
-
