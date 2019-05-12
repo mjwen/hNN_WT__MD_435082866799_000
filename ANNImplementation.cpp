@@ -48,7 +48,6 @@
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelDriverCreate
-
 ANNImplementation::ANNImplementation(
     KIM::ModelDriverCreate * const modelDriverCreate,
     KIM::LengthUnit const requestedLengthUnit,
@@ -129,10 +128,10 @@ ANNImplementation::~ANNImplementation()
   Deallocate2DArray<double>(cutoffSq_2D_);
 }
 
+
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelRefresh
-
 int ANNImplementation::Refresh(KIM::ModelRefresh * const modelRefresh)
 {
   int ier;
@@ -146,6 +145,7 @@ int ANNImplementation::Refresh(KIM::ModelRefresh * const modelRefresh)
   ier = false;
   return ier;
 }
+
 
 //******************************************************************************
 int ANNImplementation::Compute(
@@ -201,8 +201,10 @@ int ANNImplementation::Compute(
   // if (ier) return ier;
 
 #include "ANNImplementationComputeDispatch.cpp"
+
   return ier;
 }
+
 
 //******************************************************************************
 int ANNImplementation::ComputeArgumentsCreate(
@@ -220,6 +222,7 @@ int ANNImplementation::ComputeArgumentsCreate(
   return ier;
 }
 
+
 //******************************************************************************
 int ANNImplementation::ComputeArgumentsDestroy(
     KIM::ModelComputeArgumentsDestroy * const modelComputeArgumentsDestroy)
@@ -236,6 +239,7 @@ int ANNImplementation::ComputeArgumentsDestroy(
   return ier;
 }
 
+
 //==============================================================================
 //
 // Implementation of ANNImplementation private member functions
@@ -248,6 +252,7 @@ void ANNImplementation::AllocatePrivateParameterMemory()
   // nothing to do for this case
 }
 
+
 //******************************************************************************
 void ANNImplementation::AllocateParameterMemory()
 {  // allocate memory for data
@@ -256,10 +261,10 @@ void ANNImplementation::AllocateParameterMemory()
       cutoffSq_2D_, numberModelSpecies_, numberModelSpecies_);
 }
 
+
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelDriverCreate
-
 int ANNImplementation::OpenParameterFiles(
     KIM::ModelDriverCreate * const modelDriverCreate,
     int const numberParameterFiles,
@@ -301,10 +306,10 @@ int ANNImplementation::OpenParameterFiles(
   return ier;
 }
 
+
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelDriverCreate
-
 int ANNImplementation::ProcessParameterFiles(
     KIM::ModelDriverCreate * const modelDriverCreate,
     int const numberParameterFiles,
@@ -742,6 +747,7 @@ int ANNImplementation::ProcessParameterFiles(
   return ier;
 }
 
+
 //******************************************************************************
 void ANNImplementation::getNextDataLine(FILE * const filePtr,
                                         char * nextLinePtr,
@@ -826,10 +832,10 @@ void ANNImplementation::CloseParameterFiles(
   { fclose(parameterFilePointers[i]); }
 }
 
+
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelDriverCreate
-
 int ANNImplementation::ConvertUnits(
     KIM::ModelDriverCreate * const modelDriverCreate,
     KIM::LengthUnit const requestedLengthUnit,
@@ -924,6 +930,7 @@ int ANNImplementation::ConvertUnits(
   return ier;
 }
 
+
 //******************************************************************************
 int ANNImplementation::RegisterKIMModelSettings(
     KIM::ModelDriverCreate * const modelDriverCreate) const
@@ -934,10 +941,10 @@ int ANNImplementation::RegisterKIMModelSettings(
   return error;
 }
 
+
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelComputeArgumentsCreate
-
 int ANNImplementation::RegisterKIMComputeArgumentsSettings(
     KIM::ModelComputeArgumentsCreate * const modelComputeArgumentsCreate) const
 {
@@ -973,6 +980,7 @@ int ANNImplementation::RegisterKIMComputeArgumentsSettings(
   return error;
 }
 
+
 //******************************************************************************
 // helper macro
 #define SNUM(x) \
@@ -980,7 +988,6 @@ int ANNImplementation::RegisterKIMComputeArgumentsSettings(
 
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelDriverCreate
-
 int ANNImplementation::RegisterKIMParameters(
     KIM::ModelDriverCreate * const modelDriverCreate)
 {
@@ -991,6 +998,7 @@ int ANNImplementation::RegisterKIMParameters(
   int ier = false;
   return ier;
 }
+
 
 //******************************************************************************
 int ANNImplementation::RegisterKIMFunctions(
@@ -1027,8 +1035,8 @@ int ANNImplementation::RegisterKIMFunctions(
               reinterpret_cast<KIM::Function *>(ANN::ComputeArgumentsDestroy));
 
   return error;
-
 }
+
 
 //******************************************************************************
 template<class ModelObj>
@@ -1083,10 +1091,10 @@ int ANNImplementation::SetRefreshMutableValues(ModelObj * const modelObj)
   return ier;
 }
 
+
 //******************************************************************************
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelComputeArguments
-
 int ANNImplementation::SetComputeMutableValues(
     KIM::ModelComputeArguments const * const modelComputeArguments,
     bool & isComputeProcess_dEdr,
@@ -1164,11 +1172,11 @@ int ANNImplementation::SetComputeMutableValues(
   return ier;
 }
 
+
 //******************************************************************************
 // Assume that the particle species interge code starts from 0
 #undef KIM_LOGGER_OBJECT_NAME
 #define KIM_LOGGER_OBJECT_NAME modelCompute
-
 int ANNImplementation::CheckParticleSpeciesCodes(
     KIM::ModelCompute const * const modelCompute,
     int const * const particleSpeciesCodes) const
@@ -1190,6 +1198,7 @@ int ANNImplementation::CheckParticleSpeciesCodes(
   ier = false;
   return ier;
 }
+
 
 //******************************************************************************
 int ANNImplementation::GetComputeIndex(
@@ -1237,6 +1246,7 @@ int ANNImplementation::GetComputeIndex(
 
   return index;
 }
+
 
 //==============================================================================
 //

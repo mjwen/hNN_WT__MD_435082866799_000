@@ -29,10 +29,8 @@
 #ifndef ANN_IMPLEMENTATION_HPP_
 #define ANN_IMPLEMENTATION_HPP_
 
-#include "KIM_LogMacros.hpp"
-#include "KIM_LogVerbosity.hpp"
 #include <vector>
-
+#include "KIM_LogMacros.hpp"
 #include "ANN.hpp"
 #include "descriptor.h"
 #include "helper.hpp"
@@ -247,8 +245,9 @@ class ANNImplementation
 //       and easy maintenance.
 //
 //==============================================================================
-#define KIM_LOGGER_OBJECT_NAME modelCompute
 
+#undef KIM_LOGGER_OBJECT_NAME
+#define KIM_LOGGER_OBJECT_NAME modelCompute
 template<bool isComputeProcess_dEdr,
          bool isComputeProcess_d2Edr2,
          bool isComputeEnergy,

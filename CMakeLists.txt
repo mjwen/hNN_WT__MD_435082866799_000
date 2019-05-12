@@ -43,12 +43,13 @@ endif()
 
 # End preamble
 
-# c++ 11
-set (CMAKE_CXX_STANDARD 11)
 
-# Eigen library
-#include_directories(~/Applications/eigen)
-include_directories(./eigen)
+# Eigen library v3.3.7
+set (CMAKE_CXX_STANDARD 11)
+file(DOWNLOAD http://bitbucket.org/eigen/eigen/get/3.3.7.tar.gz ${PROJECT_SOURCE_DIR}/eigen.tar.gz)
+execute_process(COMMAND tar xzf ${PROJECT_SOURCE_DIR}/eigen.tar.gz -C ${PROJECT_SOURCE_DIR})
+include_directories(${PROJECT_SOURCE_DIR}/eigen-eigen-323c052e1731)
+
 
 set(MODEL_DRIVER_NAME "ANN_WenTadmor__MD_000000111111_000")
 
