@@ -47,7 +47,8 @@ endif()
 set (CMAKE_CXX_STANDARD 11)
 
 # Eigen library
-include_directories(~/Applications/eigen)
+#include_directories(~/Applications/eigen)
+include_directories(./eigen)
 
 set(MODEL_DRIVER_NAME "ANN_WenTadmor__MD_000000111111_000")
 

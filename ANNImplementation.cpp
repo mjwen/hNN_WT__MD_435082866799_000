@@ -320,7 +320,7 @@ int ANNImplementation::ProcessParameterFiles(
   int endOfFileFlag = 0;
   char nextLine[MAXLINE];
   char errorMsg[MAXLINE];
-  char name[MAXLINE];
+  char name[1024];
   double cutoff;
 
   // descriptor
@@ -998,24 +998,36 @@ int ANNImplementation::RegisterKIMFunctions(
 {
   int error;
 
-  // register the Destroy(), Refresh(), and Compute() functions
-  error = modelDriverCreate->SetDestroyPointer(
-              KIM::LANGUAGE_NAME::cpp, (KIM::Function *) &(ANN::Destroy))
-          ||
-          // Do not publish parameters
-          //    modelDriverCreate->SetRefreshPointer(
-          //        KIM::LANGUAGE_NAME::cpp,
-          //        (KIM::Function*)&(ANN::Refresh)) ||
-          modelDriverCreate->SetComputePointer(
-              KIM::LANGUAGE_NAME::cpp, (KIM::Function *) &(ANN::Compute))
-          || modelDriverCreate->SetComputeArgumentsCreatePointer(
+
+   // register functions
+  error = modelDriverCreate->SetRoutinePointer(
+              KIM::MODEL_ROUTINE_NAME::Destroy,
               KIM::LANGUAGE_NAME::cpp,
-              (KIM::Function *) &(ANN::ComputeArgumentsCreate))
-          || modelDriverCreate->SetComputeArgumentsDestroyPointer(
+              true,
+              reinterpret_cast<KIM::Function *>(ANN::Destroy))
+//          || modelDriverCreate->SetRoutinePointer(
+//              KIM::MODEL_ROUTINE_NAME::Refresh,
+//              KIM::LANGUAGE_NAME::cpp,
+//              true,
+//              reinterpret_cast<KIM::Function *>(ANN::Refresh))
+          || modelDriverCreate->SetRoutinePointer(
+              KIM::MODEL_ROUTINE_NAME::Compute,
               KIM::LANGUAGE_NAME::cpp,
-              (KIM::Function *) &(ANN::ComputeArgumentsDestroy));
+              true,
+              reinterpret_cast<KIM::Function *>(ANN::Compute))
+          || modelDriverCreate->SetRoutinePointer(
+              KIM::MODEL_ROUTINE_NAME::ComputeArgumentsCreate,
+              KIM::LANGUAGE_NAME::cpp,
+              true,
+              reinterpret_cast<KIM::Function *>(ANN::ComputeArgumentsCreate))
+          || modelDriverCreate->SetRoutinePointer(
+              KIM::MODEL_ROUTINE_NAME::ComputeArgumentsDestroy,
+              KIM::LANGUAGE_NAME::cpp,
+              true,
+              reinterpret_cast<KIM::Function *>(ANN::ComputeArgumentsDestroy));
 
   return error;
+
 }
 
 //******************************************************************************
