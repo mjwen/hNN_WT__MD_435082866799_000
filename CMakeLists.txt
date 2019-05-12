@@ -19,17 +19,11 @@
 #
 
 #
-# Copyright (c) 2013--2018, Regents of the University of Minnesota.
+# Copyright (c) 2013--2019, Regents of the University of Minnesota.
 # All rights reserved.
 #
 # Contributors:
-#    Richard Berger
-#    Christoph Junghans
-#    Ryan S. Elliott
-#
-
-#
-# Release: This file is part of the kim-api.git repository.
+#    Mingjian Wen
 #
 
 
@@ -39,9 +33,10 @@
 
 cmake_minimum_required(VERSION 3.4)
 
-list(APPEND CMAKE_PREFIX_PATH $ENV{KIM_API_V2_CMAKE_PREFIX_DIR})
-find_package(KIM-API-V2 2.0 REQUIRED CONFIG)
+list(APPEND CMAKE_PREFIX_PATH $ENV{KIM_API_CMAKE_PREFIX_DIR})
+find_package(KIM-API 2.0 REQUIRED CONFIG)
 if(NOT TARGET kim-api)
+  enable_testing()
   project("${KIM_API_PROJECT_NAME}" VERSION "${KIM_API_VERSION}"
     LANGUAGES CXX C Fortran)
 endif()
@@ -69,4 +64,3 @@ target_sources(${MODEL_DRIVER_NAME} PRIVATE
   descriptor.cpp
   network.cpp
   )
-
