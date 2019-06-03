@@ -1007,17 +1007,17 @@ int ANNImplementation::RegisterKIMFunctions(
   int error;
 
 
-   // register functions
+  // register functions
   error = modelDriverCreate->SetRoutinePointer(
               KIM::MODEL_ROUTINE_NAME::Destroy,
               KIM::LANGUAGE_NAME::cpp,
               true,
               reinterpret_cast<KIM::Function *>(ANN::Destroy))
-//          || modelDriverCreate->SetRoutinePointer(
-//              KIM::MODEL_ROUTINE_NAME::Refresh,
-//              KIM::LANGUAGE_NAME::cpp,
-//              true,
-//              reinterpret_cast<KIM::Function *>(ANN::Refresh))
+          //          || modelDriverCreate->SetRoutinePointer(
+          //              KIM::MODEL_ROUTINE_NAME::Refresh,
+          //              KIM::LANGUAGE_NAME::cpp,
+          //              true,
+          //              reinterpret_cast<KIM::Function *>(ANN::Refresh))
           || modelDriverCreate->SetRoutinePointer(
               KIM::MODEL_ROUTINE_NAME::Compute,
               KIM::LANGUAGE_NAME::cpp,

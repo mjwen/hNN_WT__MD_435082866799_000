@@ -29,12 +29,12 @@
 #ifndef ANN_IMPLEMENTATION_HPP_
 #define ANN_IMPLEMENTATION_HPP_
 
-#include <vector>
-#include "KIM_LogMacros.hpp"
 #include "ANN.hpp"
+#include "KIM_LogMacros.hpp"
 #include "descriptor.h"
 #include "helper.hpp"
 #include "network.h"
+#include <vector>
 
 #define DIM 3
 #define ONE 1.0
@@ -502,9 +502,9 @@ int ANNImplementation::Compute(
       // cutoff between ij
       double rcutij = sqrt(cutoffSq_2D_[iSpecies][jSpecies]);
       // add 1e-10 to prevent numerical error
-      if (rijmag < rcutij + 1e-10) {numnei_within_cutoff += 1; }
+      if (rijmag < rcutij + 1e-10) { numnei_within_cutoff += 1; }
 
-    } // loop over jj
+    }  // loop over jj
 
 
     //
@@ -519,8 +519,10 @@ int ANNImplementation::Compute(
     double ** dGCdr_two;
     double *** dGCdr_three;
     AllocateAndInitialize1DArray<double>(GC, Ndescriptors);
-    AllocateAndInitialize2DArray<double>(dGCdr_two, Npairs_two, Ndescriptors_two);
-    AllocateAndInitialize3DArray<double>(dGCdr_three, Npairs_three, Ndescriptors_three, 3);
+    AllocateAndInitialize2DArray<double>(
+        dGCdr_two, Npairs_two, Ndescriptors_two);
+    AllocateAndInitialize3DArray<double>(
+        dGCdr_three, Npairs_three, Ndescriptors_three, 3);
 
 
     int s_two = -1;  // row index of dGCdr_two
@@ -544,10 +546,6 @@ int ANNImplementation::Compute(
       { rij[dim] = coordinates[j][dim] - coordinates[i][dim]; }
       double const rijsq = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
       double const rijmag = sqrt(rijsq);
-
-
-
-
 
 
       // if particles i and j not interact
@@ -768,28 +766,28 @@ int ANNImplementation::Compute(
                 / descriptor_->features_std[t];
       }
 
-//      if (need_dE)
-//      {
-//        for (int s = 0; s < Npairs_two; s++)
-//        {
-//          for (int t = 0; t < Ndescriptors_two; t++)
-//          {
-//            int desc_idx = map_t_desc_two[t];
-//            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
-//          }
-//        }
+      //      if (need_dE)
+      //      {
+      //        for (int s = 0; s < Npairs_two; s++)
+      //        {
+      //          for (int t = 0; t < Ndescriptors_two; t++)
+      //          {
+      //            int desc_idx = map_t_desc_two[t];
+      //            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
+      //          }
+      //        }
 
-//        for (int s = 0; s < Npairs_three; s++)
-//        {
-//          for (int t = 0; t < Ndescriptors_three; t++)
-//          {
-//            int desc_idx = map_t_desc_three[t];
-//            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
-//            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
-//            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
-//          }
-//        }
-//      }
+      //        for (int s = 0; s < Npairs_three; s++)
+      //        {
+      //          for (int t = 0; t < Ndescriptors_three; t++)
+      //          {
+      //            int desc_idx = map_t_desc_three[t];
+      //            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
+      //            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
+      //            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
+      //          }
+      //        }
+      //      }
     }
 
 #ifdef DEBUG
@@ -826,7 +824,6 @@ int ANNImplementation::Compute(
     // Contribution to forces and virial
     if (need_dE)
     {
-
       int s_two = -1;  // row index of dGCdr_two
       int s_three = -1;  // row index of dGCdr_three
 
@@ -854,7 +851,7 @@ int ANNImplementation::Compute(
         for (int t = 0; t < Ndescriptors_two; t++)
         {
           int desc_idx = map_t_desc_two[t];
-          double normal_const =  descriptor_->features_std[desc_idx];
+          double normal_const = descriptor_->features_std[desc_idx];
           dEdr_two += dGCdr_two[s_two][t] * dEdGC[desc_idx] / normal_const;
         }
 
@@ -931,13 +928,13 @@ int ANNImplementation::Compute(
           for (int t = 0; t < Ndescriptors_three; t++)
           {
             int desc_idx = map_t_desc_three[t];
-            double normal_const =  descriptor_->features_std[desc_idx];
-            dEdr_three[0]
-                += dGCdr_three[s_three][t][0] * dEdGC[desc_idx] / normal_const ;  // dEdrij
-            dEdr_three[1]
-                += dGCdr_three[s_three][t][1] * dEdGC[desc_idx]/ normal_const ;  // dEdrik
-            dEdr_three[2]
-                += dGCdr_three[s_three][t][2] * dEdGC[desc_idx]/ normal_const ;  // dEdrjk
+            double normal_const = descriptor_->features_std[desc_idx];
+            dEdr_three[0] += dGCdr_three[s_three][t][0] * dEdGC[desc_idx]
+                             / normal_const;  // dEdrij
+            dEdr_three[1] += dGCdr_three[s_three][t][1] * dEdGC[desc_idx]
+                             / normal_const;  // dEdrik
+            dEdr_three[2] += dGCdr_three[s_three][t][2] * dEdGC[desc_idx]
+                             / normal_const;  // dEdrjk
           }
 
           // forces
