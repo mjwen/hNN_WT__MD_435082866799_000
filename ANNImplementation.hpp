@@ -358,17 +358,6 @@ int ANNImplementation::Compute(
     }
   }
 
-  // allocate memory based on approximate number of neighbors
-  // memory will be relallocated if numnei is larger than approx_numnei
-  double ** dGCdr_two;
-  double *** dGCdr_three;
-  int approx_numnei = 100;
-  int Npairs_two = approx_numnei;
-  int Npairs_three = approx_numnei * (approx_numnei - 1) / 2;
-  AllocateAndInitialize2DArray<double>(dGCdr_two, Npairs_two, Ndescriptors_two);
-  AllocateAndInitialize3DArray<double>(
-      dGCdr_three, Npairs_three, Ndescriptors_three, 3);
-
   // calculate generalized coordinates
   //
   // Setup loop over contributing particles
@@ -382,23 +371,10 @@ int ANNImplementation::Compute(
     modelComputeArguments->GetNeighborList(0, i, &numnei, &n1atom);
     int const iSpecies = particleSpeciesCodes[i];
 
-    // generalized coords of atom i and its derivatives w.r.t. pair distances
-    double * GC;
-    AllocateAndInitialize1DArray<double>(GC, Ndescriptors);
-
-    int const Npairs_two = numnei;
-    int const Npairs_three = numnei * (numnei - 1) / 2;
-    // realloate memory is numnei is larger than approx_numnei
-    if (numnei > approx_numnei)
-    {
-      Deallocate2DArray(dGCdr_two);
-      Deallocate3DArray(dGCdr_three);
-      AllocateAndInitialize2DArray<double>(
-          dGCdr_two, Npairs_two, Ndescriptors_two);
-      AllocateAndInitialize3DArray<double>(
-          dGCdr_three, Npairs_three, Ndescriptors_three, 3);
-      approx_numnei = numnei;
-    }
+    //
+    // LJ part and compute the number of neighboring atoms of i
+    //
+    int numnei_within_cutoff = 0;
 
     // Setup loop over neighbors of current particle
     for (int jj = 0; jj < numnei; ++jj)
@@ -409,9 +385,6 @@ int ANNImplementation::Compute(
 
       int const jSpecies = particleSpeciesCodes[j];
 
-      // cutoff between ij
-      double rcutij = sqrt(cutoffSq_2D_[iSpecies][jSpecies]);
-
       // Compute rij
       double rij[DIM];
       for (int dim = 0; dim < DIM; ++dim)
@@ -419,8 +392,8 @@ int ANNImplementation::Compute(
       double const rijsq = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
       double const rijmag = sqrt(rijsq);
 
-      // lj part
 
+      // LJ contribution
       if (!(jContrib && (j < i)))
       {  // effective half-list
         if (rijmag > lj_cutoff_) { continue; }
@@ -524,7 +497,58 @@ int ANNImplementation::Compute(
         }
       }  // rij < cutoff
 
-      // NN part
+
+      // number of atoms fall in cutoff of NN part
+      // cutoff between ij
+      double rcutij = sqrt(cutoffSq_2D_[iSpecies][jSpecies]);
+      // add 1e-10 to prevent numerical error
+      if (rijmag < rcutij + 1e-10) {numnei_within_cutoff += 1; }
+
+    } // loop over jj
+
+
+    //
+    // NN part
+    //
+
+    // allocate memory based number of neighbors fall in cutoff
+    int Npairs_two = numnei_within_cutoff;
+    int Npairs_three = numnei_within_cutoff * (numnei_within_cutoff - 1) / 2;
+
+    double * GC;
+    double ** dGCdr_two;
+    double *** dGCdr_three;
+    AllocateAndInitialize1DArray<double>(GC, Ndescriptors);
+    AllocateAndInitialize2DArray<double>(dGCdr_two, Npairs_two, Ndescriptors_two);
+    AllocateAndInitialize3DArray<double>(dGCdr_three, Npairs_three, Ndescriptors_three, 3);
+
+
+    int s_two = -1;  // row index of dGCdr_two
+    int s_three = -1;  // row index of dGCdr_three
+
+    // Setup loop over neighbors of current particle
+    for (int jj = 0; jj < numnei; ++jj)
+    {
+      // adjust index of particle neighbor
+      int const j = n1atom[jj];
+      int const jContrib = particleContributing[j];
+
+      int const jSpecies = particleSpeciesCodes[j];
+
+      // cutoff between ij
+      double rcutij = sqrt(cutoffSq_2D_[iSpecies][jSpecies]);
+
+      // Compute rij
+      double rij[DIM];
+      for (int dim = 0; dim < DIM; ++dim)
+      { rij[dim] = coordinates[j][dim] - coordinates[i][dim]; }
+      double const rijsq = rij[0] * rij[0] + rij[1] * rij[1] + rij[2] * rij[2];
+      double const rijmag = sqrt(rijsq);
+
+
+
+
+
 
       // if particles i and j not interact
       if (rijmag > rcutij) { continue; }
@@ -533,7 +557,7 @@ int ANNImplementation::Compute(
       double fcij = descriptor_->cutoff(rijmag, rcutij);
       double dfcij = descriptor_->d_cutoff(rijmag, rcutij);
 
-      int s_two = jj;  // row index of dGCdr_two
+      s_two += 1;  // row index of dGCdr_two
       int t_two = 0;  // column index of dGCdr_two
       for (size_t p = 0; p < descriptor_->name.size(); p++)
       {
@@ -636,8 +660,6 @@ int ANNImplementation::Compute(
         dfcprod_dr[1] = dfcik * fcij * fcjk;
         dfcprod_dr[2] = dfcjk * fcij * fcik;
 
-        int s_three = (numnei - 1 + numnei - jj) * jj / 2
-                      + (kk - jj - 1);  // row index of dGCdr_three
 #ifdef DEBUG
         std::cout << "@numnei=" << numnei << std::endl;
         std::cout << "@jj=" << jj << std::endl;
@@ -645,8 +667,8 @@ int ANNImplementation::Compute(
         std::cout << "@s_three=" << s_three << std::endl;
 #endif
 
+        s_three += 1;  // row index of dGCdr_three
         int t_three = 0;  // column index of dGCdr_three
-
         for (size_t p = 0; p < descriptor_->name.size(); p++)
         {
           if (strcmp(descriptor_->name[p], "g4") != 0
@@ -746,27 +768,28 @@ int ANNImplementation::Compute(
                 / descriptor_->features_std[t];
       }
 
-      if (need_dE)
-      {
-        for (int s = 0; s < Npairs_two; s++)
-        {
-          for (int t = 0; t < Ndescriptors_two; t++)
-          {
-            int desc_idx = map_t_desc_two[t];
-            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
-          }
-        }
-        for (int s = 0; s < Npairs_three; s++)
-        {
-          for (int t = 0; t < Ndescriptors_three; t++)
-          {
-            int desc_idx = map_t_desc_three[t];
-            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
-            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
-            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
-          }
-        }
-      }
+//      if (need_dE)
+//      {
+//        for (int s = 0; s < Npairs_two; s++)
+//        {
+//          for (int t = 0; t < Ndescriptors_two; t++)
+//          {
+//            int desc_idx = map_t_desc_two[t];
+//            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
+//          }
+//        }
+
+//        for (int s = 0; s < Npairs_three; s++)
+//        {
+//          for (int t = 0; t < Ndescriptors_three; t++)
+//          {
+//            int desc_idx = map_t_desc_three[t];
+//            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
+//            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
+//            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
+//          }
+//        }
+//      }
     }
 
 #ifdef DEBUG
@@ -803,6 +826,10 @@ int ANNImplementation::Compute(
     // Contribution to forces and virial
     if (need_dE)
     {
+
+      int s_two = -1;  // row index of dGCdr_two
+      int s_three = -1;  // row index of dGCdr_three
+
       // neighboring atoms of i
       for (int jj = 0; jj < numnei; ++jj)
       {
@@ -822,12 +849,13 @@ int ANNImplementation::Compute(
         if (rijmag > rcutij) { continue; }
 
         // two-body descriptors
-        int s_two = jj;
         double dEdr_two = 0;
+        s_two += 1;
         for (int t = 0; t < Ndescriptors_two; t++)
         {
           int desc_idx = map_t_desc_two[t];
-          dEdr_two += dGCdr_two[s_two][t] * dEdGC[desc_idx];
+          double normal_const =  descriptor_->features_std[desc_idx];
+          dEdr_two += dGCdr_two[s_two][t] * dEdGC[desc_idx] / normal_const;
         }
 
         // forces
@@ -898,18 +926,18 @@ int ANNImplementation::Compute(
           {
             continue;  // only for g4, not for g4
           }
-          int s_three = (numnei - 1 + numnei - jj) * jj / 2
-                        + (kk - jj - 1);  // row index of dGCdr_three
           double dEdr_three[3] = {0, 0, 0};
+          s_three += 1;  // row index of dGCdr_three
           for (int t = 0; t < Ndescriptors_three; t++)
           {
             int desc_idx = map_t_desc_three[t];
+            double normal_const =  descriptor_->features_std[desc_idx];
             dEdr_three[0]
-                += dGCdr_three[s_three][t][0] * dEdGC[desc_idx];  // dEdrij
+                += dGCdr_three[s_three][t][0] * dEdGC[desc_idx] / normal_const ;  // dEdrij
             dEdr_three[1]
-                += dGCdr_three[s_three][t][1] * dEdGC[desc_idx];  // dEdrik
+                += dGCdr_three[s_three][t][1] * dEdGC[desc_idx]/ normal_const ;  // dEdrik
             dEdr_three[2]
-                += dGCdr_three[s_three][t][2] * dEdGC[desc_idx];  // dEdrjk
+                += dGCdr_three[s_three][t][2] * dEdGC[desc_idx]/ normal_const ;  // dEdrjk
           }
 
           // forces
@@ -966,7 +994,11 @@ int ANNImplementation::Compute(
       }  // loop over jj
     }  // need_dE
 
+
     Deallocate1DArray(GC);
+    Deallocate2DArray(dGCdr_two);
+    Deallocate3DArray(dGCdr_three);
+
   }  // loop over ii, i.e. contributing particles
 
   Deallocate2DArray(costerm);
@@ -976,8 +1008,6 @@ int ANNImplementation::Compute(
   delete[] map_t_desc_two;
   delete[] map_t_desc_three;
 
-  Deallocate2DArray(dGCdr_two);
-  Deallocate3DArray(dGCdr_three);
 
   // everything is good
   ier = false;
