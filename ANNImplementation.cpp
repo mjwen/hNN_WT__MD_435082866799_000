@@ -124,6 +124,8 @@ ANNImplementation::~ANNImplementation()
    // pointer and we have ensured that
   // everything is initialized to null
 
+  delete descriptor_;
+  delete network_;
   Deallocate1DArray<double>(cutoff_);
   Deallocate2DArray<double>(cutoffSq_2D_);
 }
