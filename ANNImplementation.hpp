@@ -275,7 +275,14 @@ int ANNImplementation::Compute(
       && (isComputeParticleVirial == false))
   { return ier; }
 
-  bool need_dE = (isComputeProcess_dEdr == true) || (isComputeForces == true);
+  if (isComputeProcess_d2Edr2 == true) {
+      LOG_ERROR("process_d2Edr2 not supported by this driver");
+      return true;
+    }
+
+  bool need_dE = ((isComputeProcess_dEdr == true) || (isComputeForces == true)
+      || (isComputeVirial == true) || (isComputeParticleVirial == true));
+
 
   // ANNImplementation: values that does not change
   int const Nparticles = cachedNumberOfParticles_;
@@ -382,7 +389,6 @@ int ANNImplementation::Compute(
       // adjust index of particle neighbor
       int const j = n1atom[jj];
       int const jContrib = particleContributing[j];
-
       int const jSpecies = particleSpeciesCodes[j];
 
       // Compute rij
@@ -395,7 +401,8 @@ int ANNImplementation::Compute(
 
       // LJ contribution
       if (!(jContrib && (j < i)))
-      {  // effective half-list
+      {
+        // effective half-list
         if (rijmag > lj_cutoff_) { continue; }
 
         double phi;
@@ -476,7 +483,7 @@ int ANNImplementation::Compute(
 
         //  virial
         if (isComputeVirial == true)
-        { ProcessVirialTerm(dEidr, rijmag, rij, i, j, virial); }
+        { ProcessVirialTerm(dEidr, rijmag, rij, virial); }
 
         //  particleVirial
         if (isComputeParticleVirial == true)
@@ -495,7 +502,7 @@ int ANNImplementation::Compute(
             return ier;
           }
         }
-      }  // rij < cutoff
+      }
 
 
       // number of atoms fall in cutoff of NN part
@@ -533,8 +540,6 @@ int ANNImplementation::Compute(
     {
       // adjust index of particle neighbor
       int const j = n1atom[jj];
-      int const jContrib = particleContributing[j];
-
       int const jSpecies = particleSpeciesCodes[j];
 
       // cutoff between ij
@@ -868,7 +873,7 @@ int ANNImplementation::Compute(
 
         //  virial
         if (isComputeVirial == true)
-        { ProcessVirialTerm(dEdr_two, rijmag, rij, i, j, virial); }
+        { ProcessVirialTerm(dEdr_two, rijmag, rij, virial); }
 
         //  particleVirial
         if (isComputeParticleVirial == true)
@@ -956,9 +961,9 @@ int ANNImplementation::Compute(
           // virial
           if (isComputeVirial == true)
           {
-            ProcessVirialTerm(dEdr_three[0], rijmag, rij, i, j, virial);
-            ProcessVirialTerm(dEdr_three[1], rikmag, rik, i, k, virial);
-            ProcessVirialTerm(dEdr_three[2], rjkmag, rjk, j, k, virial);
+            ProcessVirialTerm(dEdr_three[0], rijmag, rij, virial);
+            ProcessVirialTerm(dEdr_three[1], rikmag, rik, virial);
+            ProcessVirialTerm(dEdr_three[2], rjkmag, rjk, virial);
           }
 
           // particleVirial

@@ -36,6 +36,7 @@
 typedef double VectorOfSizeDIM[3];
 typedef double VectorOfSizeSix[6];
 
+
 // 1D Array
 //******************************************************************************
 template<class T>
@@ -45,6 +46,7 @@ void AllocateAndInitialize1DArray(T *& arrayPtr, int const extent)
   for (int i = 0; i < extent; ++i) { arrayPtr[i] = 0.0; }
 }
 
+
 // deallocate memory
 template<class T>
 void Deallocate1DArray(T *& arrayPtr)
@@ -53,6 +55,7 @@ void Deallocate1DArray(T *& arrayPtr)
   // nullify pointer
   arrayPtr = NULL;
 }
+
 
 // 2D Array
 //******************************************************************************
@@ -74,6 +77,7 @@ void AllocateAndInitialize2DArray(T **& arrayPtr,
   }
 }
 
+
 // deallocate memory
 template<class T>
 void Deallocate2DArray(T **& arrayPtr)
@@ -84,6 +88,7 @@ void Deallocate2DArray(T **& arrayPtr)
   // nullify pointer
   arrayPtr = NULL;
 }
+
 
 // 3D Array
 //******************************************************************************
@@ -120,6 +125,7 @@ void AllocateAndInitialize3DArray(T ***& arrayPtr,
   }
 }
 
+
 // deallocate memory
 template<class T>
 void Deallocate3DArray(T ***& arrayPtr)
@@ -135,13 +141,12 @@ void Deallocate3DArray(T ***& arrayPtr)
   arrayPtr = NULL;
 }
 
+
 // process virial
 //******************************************************************************
 void ProcessVirialTerm(double const dEidr,
                        double const rij,
                        double const * const r_ij,
-                       int const i,
-                       int const j,
                        VectorOfSizeSix virial);
 
 void ProcessParticleVirialTerm(double const dEidr,

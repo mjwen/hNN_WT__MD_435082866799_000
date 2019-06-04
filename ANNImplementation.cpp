@@ -1140,20 +1140,20 @@ int ANNImplementation::SetComputeMutableValues(
             &particleContributing)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::coordinates,
-            (double const ** const) & coordinates)
+            (double const **) & coordinates)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialEnergy, &energy)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialForces,
-            (double const ** const) & forces)
+            (double const **) & forces)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialParticleEnergy, &particleEnergy)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialVirial,
-            (double const ** const) & virial)
+            (double const **) & virial)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialParticleVirial,
-            (double const ** const) & particleVirial);
+            (double const **) & particleVirial);
   if (ier)
   {
     LOG_ERROR("GetArgumentPointer");
