@@ -51,7 +51,7 @@ execute_process(COMMAND tar xzf ${PROJECT_SOURCE_DIR}/eigen.tar.gz -C ${PROJECT_
 include_directories(${PROJECT_SOURCE_DIR}/eigen-eigen-323c052e1731)
 
 
-set(MODEL_DRIVER_NAME "ANN_WenTadmor__MD_000000111111_000")
+set(MODEL_DRIVER_NAME "Hybrid_NN_LJ__MD_000000111111_000")
 
 add_kim_api_model_driver_library(
   NAME                    ${MODEL_DRIVER_NAME}
