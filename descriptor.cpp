@@ -233,7 +233,7 @@ void Descriptor::sym_g4(double zeta,
     double costerm;
     double base = 1 + lambda * cos_ijk;
     if (base <= 0)
-    {  // prevent numerical unstability (when lambd=-1 and cos_ijk=1)
+    {  // prevent numerical instability (when lambda=-1 and cos_ijk=1)
       costerm = 0;
     }
     else
@@ -291,7 +291,7 @@ void Descriptor::sym_d_g4(const double zeta,
     double dcosterm_dcos;
     double base = 1 + lambda * cos_ijk;
     if (base <= 0)
-    {  // prevent numerical unstability (when lambd=-1 and cos_ijk=1)
+    {  // prevent numerical instability (when lambda=-1 and cos_ijk=1)
       costerm = 0.0;
       dcosterm_dcos = 0.0;
     }
@@ -407,7 +407,7 @@ void Descriptor::sym_g5(double zeta,
     double costerm;
     double base = 1 + lambda * cos_ijk;
     if (base <= 0)
-    {  // prevent numerical unstability (when lambd=-1 and cos_ijk=1)
+    {  // prevent numerical instability (when lambda=-1 and cos_ijk=1)
       costerm = 0;
     }
     else
@@ -458,7 +458,7 @@ void Descriptor::sym_d_g5(double zeta,
     double dcosterm_dcos;
     double base = 1 + lambda * cos_ijk;
     if (base <= 0)
-    {  // prevent numerical unstability (when lambd=-1 and cos_ijk=1)
+    {  // prevent numerical instability (when lambda=-1 and cos_ijk=1)
       costerm = 0.0;
       dcosterm_dcos = 0.0;
     }
@@ -501,7 +501,7 @@ void Descriptor::sym_d_g5(double zeta,
   }
 }
 
-// precompute the terms associated with parameters of g4
+// pre-compute the terms associated with parameters of g4
 void Descriptor::precompute_g4(const double rijmag,
                                const double rikmag,
                                const double rjkmag,
@@ -536,7 +536,7 @@ void Descriptor::precompute_g4(const double rijmag,
       double p2 = 2. / tmp;  // 2^(1-zeta)
 
       if (base <= 0)
-      {  // prevent numerical unstability (when lambd=-1 and cos_ijk=1)
+      {  // prevent numerical instability (when lambda=-1 and cos_ijk=1)
         costerm[ilam][izeta] = 0.0;
         dcosterm_dr[ilam][izeta][0] = 0.0;
         dcosterm_dr[ilam][izeta][1] = 0.0;
@@ -567,7 +567,7 @@ void Descriptor::precompute_g4(const double rijmag,
   }
 }
 
-// precompute the distinct of parameter values of g4, and find the
+// pre-compute the distinct of parameter values of g4, and find the
 // index of each parameter in the distinct values array
 void Descriptor::create_g4_lookup()
 {
@@ -585,7 +585,7 @@ void Descriptor::create_g4_lookup()
         double lambda = this->params[p][q][1];
         double eta = this->params[p][q][2];
 
-        // check wheter zeta is whole number. `fast_power` we implemented only
+        // check whether zeta is whole number. `fast_power` we implemented only
         // supports integers
         if (check_whole(zeta) == false)
         {

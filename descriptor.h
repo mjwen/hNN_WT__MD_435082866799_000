@@ -282,7 +282,7 @@ inline double fast_pow(double base, int n)
   return power;
 }
 
-// check wheter a double is a whole number
+// check whether a double is a whole number
 inline bool check_whole(double x)
 {
   if (std::ceil(x) == x) { return true; }

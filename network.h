@@ -83,7 +83,7 @@ class NeuralNetwork
  private:
   int inputSize_;  // size of input layer
   int Nlayers_;  // number of layers, including output, excluding input
-  std::vector<int> layerSizes_;  // number of perceptrons in each layer
+  std::vector<int> layerSizes_;  // number of nodes in each layer
   ActivationFunction activFunc_;
   ActivationFunctionDerivative activFuncDeriv_;
   std::vector<RowMatrixXd> weights_;
@@ -98,7 +98,7 @@ class NeuralNetwork
   RowMatrixXd dropout_(RowMatrixXd const & x, int layer);
 };
 
-// activation fucntion and derivatives
+// activation function and derivatives
 RowMatrixXd relu(RowMatrixXd const & x);
 RowMatrixXd relu_derivative(RowMatrixXd const & x);
 RowMatrixXd elu(RowMatrixXd const & x);
