@@ -344,6 +344,17 @@ int ANNImplementation::Compute(
   int t_three = 0;
   for (size_t p = 0; p < descriptor_->name.size(); p++)
   {
+
+    // Actually, this descriptor supports all, but we only want to use "g2" and
+    // "g4" here
+    if ( strcmp(descriptor_->name[p], "g1") == 0
+        || strcmp(descriptor_->name[p], "g3") == 0
+        || strcmp(descriptor_->name[p], "g5") == 0 )
+    {
+      LOG_ERROR("The driver only supports `g2` and `g4`.");
+      return true;
+    }
+
     for (int q = 0; q < descriptor_->num_param_sets[p]; q++)
     {
       if (strcmp(descriptor_->name[p], "g1") == 0
