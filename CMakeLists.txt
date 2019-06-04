@@ -43,13 +43,9 @@ endif()
 
 # End preamble
 
-
-# Eigen library v3.3.7
-set (CMAKE_CXX_STANDARD 11)
-file(DOWNLOAD http://bitbucket.org/eigen/eigen/get/3.3.7.tar.gz ${PROJECT_SOURCE_DIR}/eigen.tar.gz)
-execute_process(COMMAND tar xzf ${PROJECT_SOURCE_DIR}/eigen.tar.gz -C ${PROJECT_SOURCE_DIR})
-include_directories(${PROJECT_SOURCE_DIR}/eigen-eigen-323c052e1731)
-
+# Extract Eigen library
+execute_process(COMMAND tar xJf ${PROJECT_SOURCE_DIR}/eigen-v3.3.7.tar.xz -C ${PROJECT_SOURCE_DIR})
+set(CMAKE_CXX_STANDARD 11) # Eigen requires C++11
 
 set(MODEL_DRIVER_NAME "Hybrid_NN_LJ__MD_000000111111_000")
 
@@ -66,3 +62,6 @@ target_sources(${MODEL_DRIVER_NAME} PRIVATE
   descriptor.cpp
   network.cpp
   )
+
+# Eigen library v3.3.7
+target_include_directories(${MODEL_DRIVER_NAME} PRIVATE eigen-v3.3.7)
