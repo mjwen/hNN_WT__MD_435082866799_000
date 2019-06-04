@@ -19,7 +19,7 @@
 //
 
 //
-// Copyright (c) 2018, Regents of the University of Minnesota.
+// Copyright (c) 2019, Regents of the University of Minnesota.
 // All rights reserved.
 //
 // Contributors:
@@ -275,13 +275,15 @@ int ANNImplementation::Compute(
       && (isComputeParticleVirial == false))
   { return ier; }
 
-  if (isComputeProcess_d2Edr2 == true) {
-      LOG_ERROR("process_d2Edr2 not supported by this driver");
-      return true;
-    }
+  if (isComputeProcess_d2Edr2 == true)
+  {
+    LOG_ERROR("process_d2Edr2 not supported by this driver");
+    return true;
+  }
 
-  bool need_dE = ((isComputeProcess_dEdr == true) || (isComputeForces == true)
-      || (isComputeVirial == true) || (isComputeParticleVirial == true));
+  bool need_dE
+      = ((isComputeProcess_dEdr == true) || (isComputeForces == true)
+         || (isComputeVirial == true) || (isComputeParticleVirial == true));
 
 
   // ANNImplementation: values that does not change
@@ -316,7 +318,7 @@ int ANNImplementation::Compute(
     }
   }
 
-  // Allocate memory for precompute values of sym g4
+  // Allocate memory for pre-compute values of sym g4
   size_t n_lambda = descriptor_->g4_distinct_lambda.size();
   size_t n_zeta = descriptor_->g4_distinct_zeta.size();
   size_t n_eta = descriptor_->g4_distinct_eta.size();
@@ -333,11 +335,6 @@ int ANNImplementation::Compute(
   const int Ndescriptors = descriptor_->get_num_descriptors();
   const int Ndescriptors_two = descriptor_->get_num_descriptors_two_body();
   const int Ndescriptors_three = descriptor_->get_num_descriptors_three_body();
-#ifdef DEBUG
-  std::cout << "@Ndescriptors = " << Ndescriptors << std::endl;
-  std::cout << "@Ndescriptors_two = " << Ndescriptors_two << std::endl;
-  std::cout << "@Ndescriptors_three = " << Ndescriptors_three << std::endl;
-#endif
 
   // index map between 1D two-body, three-body descriptors and global 1D
   // descriptor
@@ -506,7 +503,6 @@ int ANNImplementation::Compute(
 
 
       // number of atoms fall in cutoff of NN part
-      // cutoff between ij
       double rcutij = sqrt(cutoffSq_2D_[iSpecies][jSpecies]);
       // add 1e-10 to prevent numerical error
       if (rijmag < rcutij + 1e-10) { numnei_within_cutoff += 1; }
@@ -574,46 +570,23 @@ int ANNImplementation::Compute(
           double gc;
           double dgcdr_two;
 
-          //          if (strcmp(descriptor_->name[p], "g1") == 0) {
-          //            if (need_dE) {
-          //              descriptor_->sym_d_g1(rijmag, rcutij, gc, dgcdr_two);
-          //            } else {
-          //              descriptor_->sym_g1(rijmag, rcutij, gc);
-          //            }
-          //          }
-          //          else if (strcmp(descriptor_->name[p], "g2") == 0) {
           double eta = descriptor_->params[p][q][0];
           double Rs = descriptor_->params[p][q][1];
 
-          //          if (need_dE) {
           descriptor_->sym_d_g2(
               eta, Rs, rijmag, rcutij, fcij, dfcij, gc, dgcdr_two);
-          //          } else {
-          //            descriptor_->sym_g2(eta, Rs, rijmag, rcutij, gc);
-          //          }
-          //          }
-          //          else if (strcmp(descriptor_->name[p], "g3") == 0) {
-          //            double kappa = descriptor_->params[p][q][0];
-          //            if (need_dE) {
-          //              descriptor_->sym_d_g3(kappa, rijmag, rcutij, gc,
-          //              dgcdr_two);
-          //            } else {
-          //              descriptor_->sym_g3(kappa, rijmag, rcutij, gc);
-          //            }
-          //          }
-          //
 
           int desc_idx = descriptor_->get_global_1D_index(p, q);
           GC[desc_idx] += gc;
-          //          if (need_dE) {
           dGCdr_two[s_two][t_two] = dgcdr_two;
           t_two += 1;
-          //          }
+
+
         }  // loop over same descriptor but different parameter set
       }  // loop over descriptors
 
+
       // three-body descriptors
-      //      if (descriptor_->has_three_body == false) continue;
 
       for (int kk = jj + 1; kk < numnei; ++kk)
       {
@@ -643,15 +616,10 @@ int ANNImplementation::Compute(
         double const rvec[3] = {rijmag, rikmag, rjkmag};
         double const rcutvec[3] = {rcutij, rcutik, rcutjk};
 
-        if (rikmag > rcutik)
-        {
-          continue;  // three-dody not interacting
-        }
-        // TODO only for g4, should delete this if we have g5
-        if (rjkmag > rcutjk)
-        {
-          continue;  // only for g4, not for g4
-        }
+        // three-dody not interacting
+        if (rikmag > rcutik) { continue; }
+        if (rjkmag > rcutjk) { continue; }  // only for g4
+
         // cutoff term, i.e. the product of fc(rij), fc(rik), and fc(rjk)
         double fcik = cut_cos(rikmag, rcutik);
         double fcjk = cut_cos(rjkmag, rcutjk);
@@ -663,12 +631,6 @@ int ANNImplementation::Compute(
         dfcprod_dr[1] = dfcik * fcij * fcjk;
         dfcprod_dr[2] = dfcjk * fcij * fcik;
 
-#ifdef DEBUG
-        std::cout << "@numnei=" << numnei << std::endl;
-        std::cout << "@jj=" << jj << std::endl;
-        std::cout << "@kk=" << kk << std::endl;
-        std::cout << "@s_three=" << s_three << std::endl;
-#endif
 
         s_three += 1;  // row index of dGCdr_three
         int t_three = 0;  // column index of dGCdr_three
@@ -678,7 +640,7 @@ int ANNImplementation::Compute(
               && strcmp(descriptor_->name[p], "g5") != 0)
           { continue; }
 
-          // precompute recurring values in cosine terms and exponential terms
+          // pre-compute recurring values in cosine terms and exponential terms
           descriptor_->precompute_g4(rijmag,
                                      rikmag,
                                      rjkmag,
@@ -698,9 +660,6 @@ int ANNImplementation::Compute(
             double gc;
             double dgcdr_three[3];
 
-            //            if (strcmp(descriptor_->name[p], "g4") == 0) {
-
-            //              if (need_dE) {
 
             // get values from precomputed
             int izeta = descriptor_->g4_lookup_zeta[q];
@@ -730,33 +689,13 @@ int ANNImplementation::Compute(
                                     gc,
                                     dgcdr_three);
 
-            //              } else {
-            //                descriptor_->sym_g4(zeta, lambda, eta, rvec,
-            //                rcutvec, gc);
-            //              }
-            //            }
-            //            else if (strcmp(descriptor_->name[p], "g5") == 0) {
-            //              double zeta = descriptor_->params[p][q][0];
-            //              double lambda = descriptor_->params[p][q][1];
-            //              double eta = descriptor_->params[p][q][2];
-            //              if (need_dE) {
-            //                descriptor_->sym_d_g5(zeta, lambda, eta, rvec,
-            //                rcutvec, gc, dgcdr_three);
-            //              } else {
-            //                descriptor_->sym_g5(zeta, lambda, eta, rvec,
-            //                rcutvec, gc);
-            //              }
-            //            }
-            //
-
             int desc_idx = descriptor_->get_global_1D_index(p, q);
             GC[desc_idx] += gc;
-            //            if (need_dE) {
             dGCdr_three[s_three][t_three][0] = dgcdr_three[0];
             dGCdr_three[s_three][t_three][1] = dgcdr_three[1];
             dGCdr_three[s_three][t_three][2] = dgcdr_three[2];
             t_three += 1;
-            //            }
+
           }  // loop over same descriptor but different parameter set
         }  // loop over descriptors
       }  // loop over kk (three body neighbors)
@@ -771,6 +710,7 @@ int ANNImplementation::Compute(
                 / descriptor_->features_std[t];
       }
 
+      // Done below when computing forces
       //      if (need_dE)
       //      {
       //        for (int s = 0; s < Npairs_two; s++)
@@ -795,20 +735,11 @@ int ANNImplementation::Compute(
       //      }
     }
 
-#ifdef DEBUG
-    // generalized coords
-    std::cout << "\n# Debug descriptor values after normalization" << std::endl;
-    std::cout << "# atom id    descriptor values ..." << std::endl;
-    std::cout << ii << "    ";
-    for (int j = 0; j < Ndescriptors; j++) { printf("%.15f ", GC[j]); }
-    std::cout << std::endl;
-#endif
 
-    // NN feedforward
+    // NN feed forward
     network_->forward(GC, 1, Ndescriptors);
 
-    // NN backpropagation to compute derivative of energy w.r.t generalized
-    // coords
+    // NN backprop to compute derivative of energy w.r.t generalized coords
     double * dEdGC;
     if (need_dE)
     {
@@ -919,15 +850,10 @@ int ANNImplementation::Compute(
           double const rikmag = sqrt(riksq);
           double const rjkmag = sqrt(rjksq);
 
-          if (rikmag > rcutik)
-          {
-            continue;  // three-dody not interacting
-          }
-          // TODO only for g4, should delete this if we have g5
-          if (rjkmag > rcutjk)
-          {
-            continue;  // only for g4, not for g4
-          }
+          // three-dody not interacting
+          if (rikmag > rcutik) { continue; }
+          if (rjkmag > rcutjk) { continue; }  // only for g4
+
           double dEdr_three[3] = {0, 0, 0};
           s_three += 1;  // row index of dGCdr_three
           for (int t = 0; t < Ndescriptors_three; t++)

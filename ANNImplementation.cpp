@@ -19,7 +19,7 @@
 //
 
 //
-// Copyright (c) 2018, Regents of the University of Minnesota.
+// Copyright (c) 2019, Regents of the University of Minnesota.
 // All rights reserved.
 //
 // Contributors:
@@ -1140,20 +1140,20 @@ int ANNImplementation::SetComputeMutableValues(
             &particleContributing)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::coordinates,
-            (double const **) & coordinates)
+            (double const **) &coordinates)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialEnergy, &energy)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialForces,
-            (double const **) & forces)
+            (double const **) &forces)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialParticleEnergy, &particleEnergy)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialVirial,
-            (double const **) & virial)
+            (double const **) &virial)
         || modelComputeArguments->GetArgumentPointer(
             KIM::COMPUTE_ARGUMENT_NAME::partialParticleVirial,
-            (double const **) & particleVirial);
+            (double const **) &particleVirial);
   if (ier)
   {
     LOG_ERROR("GetArgumentPointer");
