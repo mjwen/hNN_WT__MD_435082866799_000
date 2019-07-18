@@ -44,10 +44,10 @@ endif()
 # End preamble
 
 # Extract Eigen library
-execute_process(COMMAND tar xJf ${PROJECT_SOURCE_DIR}/eigen-v3.3.7.tar.xz -C ${PROJECT_SOURCE_DIR})
+execute_process(COMMAND tar xJf ${PROJECT_SOURCE_DIR}/eigen-v3.3.7.tar.xz -C ${CMAKE_CURRENT_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 11) # Eigen requires C++11
 
-set(MODEL_DRIVER_NAME "Hybrid_NN_LJ__MD_000000111111_000")
+set(MODEL_DRIVER_NAME "hNN_WT__MD_435082866799_000")
 
 add_kim_api_model_driver_library(
   NAME                    ${MODEL_DRIVER_NAME}
@@ -64,4 +64,4 @@ target_sources(${MODEL_DRIVER_NAME} PRIVATE
   )
 
 # Eigen library v3.3.7
-target_include_directories(${MODEL_DRIVER_NAME} PRIVATE eigen-v3.3.7)
+target_include_directories(${MODEL_DRIVER_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/eigen-v3.3.7)
