@@ -189,6 +189,9 @@ class Descriptor
     { std::cout << features_std.at(i) << std::endl; }
   }
 
+
+ void convert_units(double convertEnergy, double convertLength);
+
   // private:
   CutoffFunction cutoff;
   dCutoffFunction d_cutoff;

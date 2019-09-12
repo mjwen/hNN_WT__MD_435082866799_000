@@ -56,6 +56,7 @@ ANNImplementation::ANNImplementation(
     KIM::TemperatureUnit const requestedTemperatureUnit,
     KIM::TimeUnit const requestedTimeUnit,
     int * const ier) :
+    energyScale_(1.0),
     numberModelSpecies_(0),
     numberUniqueSpeciesPairs_(0),
     cutoff_(NULL),
@@ -914,6 +915,13 @@ int ANNImplementation::ConvertUnits(
   }
   // convert to active units
   if (convertEnergy != ONE) { lj_A_ *= convertEnergy; }
+
+  // convert descriptor part
+  if (convertEnergy != ONE or convertLength != ONE) {
+    descriptor_->convert_units(convertEnergy, convertLength);
+    energyScale_ = convertEnergy;
+  }
+
 
   // register units
   ier = modelDriverCreate->SetUnits(requestedLengthUnit,

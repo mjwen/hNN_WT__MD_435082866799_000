@@ -74,6 +74,8 @@ class ANNImplementation
   //
   //
   // ANNImplementation: constants
+  double energyScale_;
+
   int numberModelSpecies_;
   std::vector<int> modelSpeciesCodeList_;
   int numberUniqueSpeciesPairs_;
@@ -721,29 +723,6 @@ int ANNImplementation::Compute(
                 / descriptor_->features_std[t];
       }
 
-      // Done below when computing forces
-      //      if (need_dE)
-      //      {
-      //        for (int s = 0; s < Npairs_two; s++)
-      //        {
-      //          for (int t = 0; t < Ndescriptors_two; t++)
-      //          {
-      //            int desc_idx = map_t_desc_two[t];
-      //            dGCdr_two[s][t] /= descriptor_->features_std[desc_idx];
-      //          }
-      //        }
-
-      //        for (int s = 0; s < Npairs_three; s++)
-      //        {
-      //          for (int t = 0; t < Ndescriptors_three; t++)
-      //          {
-      //            int desc_idx = map_t_desc_three[t];
-      //            dGCdr_three[s][t][0] /= descriptor_->features_std[desc_idx];
-      //            dGCdr_three[s][t][1] /= descriptor_->features_std[desc_idx];
-      //            dGCdr_three[s][t][2] /= descriptor_->features_std[desc_idx];
-      //          }
-      //        }
-      //      }
     }
 
 
@@ -760,7 +739,7 @@ int ANNImplementation::Compute(
 
     double Ei = 0.;
     if (isComputeEnergy == true || isComputeParticleEnergy == true)
-    { Ei = network_->get_sum_output(); }
+    { Ei = energyScale_*network_->get_sum_output(); }
 
     // Contribution to energy
     if (isComputeEnergy == true) { *energy += Ei; }
@@ -807,7 +786,7 @@ int ANNImplementation::Compute(
         {
           for (int dim = 0; dim < DIM; ++dim)
           {
-            double pair = dEdr_two * rij[dim] / rijmag;
+            double pair = energyScale_*dEdr_two * rij[dim] / rijmag;
             forces[i][dim] += pair;  // for i atom
             forces[j][dim] -= pair;  // for neighboring atoms of i
           }
@@ -884,14 +863,12 @@ int ANNImplementation::Compute(
           {
             for (int dim = 0; dim < DIM; ++dim)
             {
-              double pair_ij = dEdr_three[0] * rij[dim] / rijmag;
-              double pair_ik = dEdr_three[1] * rik[dim] / rikmag;
-              double pair_jk = dEdr_three[2] * rjk[dim] / rjkmag;
+              double pair_ij = energyScale_*dEdr_three[0] * rij[dim] / rijmag;
+              double pair_ik = energyScale_*dEdr_three[1] * rik[dim] / rikmag;
+              double pair_jk = energyScale_*dEdr_three[2] * rjk[dim] / rjkmag;
               forces[i][dim] += pair_ij + pair_ik;  // for i atom
-              forces[j][dim]
-                  += -pair_ij + pair_jk;  // for neighboring atoms of i
-              forces[k][dim]
-                  += -pair_ik - pair_jk;  // for neighboring atoms of i
+              forces[j][dim] += -pair_ij + pair_jk;  // neighbor atoms of i
+              forces[k][dim] += -pair_ik - pair_jk;  // neighbor atoms of i
             }
           }
 

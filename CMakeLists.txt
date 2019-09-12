@@ -47,7 +47,7 @@ endif()
 execute_process(COMMAND tar xJf ${PROJECT_SOURCE_DIR}/eigen-v3.3.7.tar.xz -C ${CMAKE_CURRENT_BINARY_DIR})
 set(CMAKE_CXX_STANDARD 11) # Eigen requires C++11
 
-set(MODEL_DRIVER_NAME "hNN_WT__MD_435082866799_000")
+set(MODEL_DRIVER_NAME "hNN__MD_435082866799_000")
 
 add_kim_api_model_driver_library(
   NAME                    ${MODEL_DRIVER_NAME}

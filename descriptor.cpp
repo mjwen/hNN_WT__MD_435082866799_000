@@ -143,6 +143,41 @@ int Descriptor::get_global_1D_index(const int p, const int q)
   return starting_index[p] + q;
 }
 
+
+void Descriptor::convert_units(double convertEnergy, double convertLength)
+{
+
+  (void) convertEnergy; // avoid unused warning
+
+  // parameters
+  for (size_t p = 0; p < this->name.size(); p++)
+  {
+    for (int q = 0; q < num_param_sets[p]; q++)
+    {
+      if (strcmp(this->name[p], "g2") ==0)
+      {
+        this->params[p][q][0] /= convertLength * convertLength;  // eta
+        this->params[p][q][1] *= convertLength;  // Rs
+      }
+      if (strcmp(this->name[p], "g3") ==0)
+      {
+        this->params[p][q][0] /= convertLength;  // kappa
+      }
+      if (strcmp(this->name[p], "g4") ==0)
+      {
+        this->params[p][q][2] /= convertLength * convertLength;  // eta
+      }
+      if (strcmp(this->name[p], "g5") ==0)
+      {
+        this->params[p][q][2] /= convertLength * convertLength;  // eta
+      }
+    }
+  }
+
+}
+
+
+
 //*****************************************************************************
 // Symmetry functions: Jorg Behler, J. Chem. Phys. 134, 074106, 2011.
 //*****************************************************************************
