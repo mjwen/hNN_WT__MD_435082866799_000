@@ -190,7 +190,7 @@ class Descriptor
   }
 
 
- void convert_units(double convertEnergy, double convertLength);
+  void convert_units(double convertEnergy, double convertLength);
 
   // private:
   CutoffFunction cutoff;

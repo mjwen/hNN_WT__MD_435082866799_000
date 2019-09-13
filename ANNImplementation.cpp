@@ -57,6 +57,7 @@ ANNImplementation::ANNImplementation(
     KIM::TimeUnit const requestedTimeUnit,
     int * const ier) :
     energyScale_(1.0),
+    lengthScale_(1.0),
     numberModelSpecies_(0),
     numberUniqueSpeciesPairs_(0),
     cutoff_(NULL),
@@ -888,6 +889,10 @@ int ANNImplementation::ConvertUnits(
     lj_r_down_min_ *= convertLength;
     lj_r_down_max_ *= convertLength;
     lj_cutoff_ *= convertLength;
+
+    for (int i = 0; i < numberUniqueSpeciesPairs_; i++)
+    { cutoff_[i] *= convertLength; }
+    lengthScale_ = convertLength;
   }
 
   // changing units of A and lambda
@@ -914,13 +919,16 @@ int ANNImplementation::ConvertUnits(
     return ier;
   }
   // convert to active units
-  if (convertEnergy != ONE) { lj_A_ *= convertEnergy; }
+  if (convertEnergy != ONE)
+  {
+    lj_A_ *= convertEnergy;
 
-  // convert descriptor part
-  if (convertEnergy != ONE or convertLength != ONE) {
-    descriptor_->convert_units(convertEnergy, convertLength);
     energyScale_ = convertEnergy;
   }
+
+  // convert descriptor part
+  if (convertEnergy != ONE or convertLength != ONE)
+  { descriptor_->convert_units(convertEnergy, convertLength); }
 
 
   // register units

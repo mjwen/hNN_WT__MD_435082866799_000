@@ -75,6 +75,7 @@ class ANNImplementation
   //
   // ANNImplementation: constants
   double energyScale_;
+  double lengthScale_;
 
   int numberModelSpecies_;
   std::vector<int> modelSpeciesCodeList_;
@@ -346,12 +347,11 @@ int ANNImplementation::Compute(
   int t_three = 0;
   for (size_t p = 0; p < descriptor_->name.size(); p++)
   {
-
     // Actually, this descriptor supports all, but we only want to use "g2" and
     // "g4" here
-    if ( strcmp(descriptor_->name[p], "g1") == 0
+    if (strcmp(descriptor_->name[p], "g1") == 0
         || strcmp(descriptor_->name[p], "g3") == 0
-        || strcmp(descriptor_->name[p], "g5") == 0 )
+        || strcmp(descriptor_->name[p], "g5") == 0)
     {
       LOG_ERROR("The driver only supports `g2` and `g4`.");
       return true;
@@ -422,7 +422,7 @@ int ANNImplementation::Compute(
         {
           // compute pair potential and its derivative
           const double epsilon = lj_A_ / 4.0;
-          const double sigma = 1.;
+          const double sigma = 1. * lengthScale_;
           calc_phi_dphi(epsilon, sigma, lj_cutoff_, rijmag, &phi, &dphi);
 
           // switch short range
@@ -722,7 +722,6 @@ int ANNImplementation::Compute(
         GC[t] = (GC[t] - descriptor_->features_mean[t])
                 / descriptor_->features_std[t];
       }
-
     }
 
 
@@ -737,15 +736,17 @@ int ANNImplementation::Compute(
       dEdGC = network_->get_grad_input();
     }
 
+
     double Ei = 0.;
     if (isComputeEnergy == true || isComputeParticleEnergy == true)
-    { Ei = energyScale_*network_->get_sum_output(); }
+    { Ei = energyScale_ * network_->get_sum_output(); }
 
     // Contribution to energy
     if (isComputeEnergy == true) { *energy += Ei; }
 
     // Contribution to particle energy
     if (isComputeParticleEnergy == true) { particleEnergy[i] += Ei; }
+
 
     // Contribution to forces and virial
     if (need_dE)
@@ -786,7 +787,7 @@ int ANNImplementation::Compute(
         {
           for (int dim = 0; dim < DIM; ++dim)
           {
-            double pair = energyScale_*dEdr_two * rij[dim] / rijmag;
+            double pair = energyScale_ * dEdr_two * rij[dim] / rijmag;
             forces[i][dim] += pair;  // for i atom
             forces[j][dim] -= pair;  // for neighboring atoms of i
           }
@@ -863,9 +864,9 @@ int ANNImplementation::Compute(
           {
             for (int dim = 0; dim < DIM; ++dim)
             {
-              double pair_ij = energyScale_*dEdr_three[0] * rij[dim] / rijmag;
-              double pair_ik = energyScale_*dEdr_three[1] * rik[dim] / rikmag;
-              double pair_jk = energyScale_*dEdr_three[2] * rjk[dim] / rjkmag;
+              double pair_ij = energyScale_ * dEdr_three[0] * rij[dim] / rijmag;
+              double pair_ik = energyScale_ * dEdr_three[1] * rik[dim] / rikmag;
+              double pair_jk = energyScale_ * dEdr_three[2] * rjk[dim] / rjkmag;
               forces[i][dim] += pair_ij + pair_ik;  // for i atom
               forces[j][dim] += -pair_ij + pair_jk;  // neighbor atoms of i
               forces[k][dim] += -pair_ik - pair_jk;  // neighbor atoms of i
