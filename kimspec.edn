@@ -1,0 +1,11 @@
+{"author" "Mingjian Wen"
+ "contributor-id" "5ca58a6a-aa46-4e5a-a2e1-b3fc6bc2efa6"
+ "description" "A hybrid neural network (NN) and Lennard-Jones (LJ) model driver for multilayer two-dimensional materials. The NN term models short-range intralayer and orbital overlap interactions and the theoretically-motivated LJ term models long-range dispersion."
+ "doi" "10.25950/d9783ee5"
+ "domain" "openkim.org"
+ "executables" ["CreateDispatch.sh"]
+ "extended-id" "hNN__MD_435082866799_000"
+ "kim-api-version" "2.0"
+ "maintainer-id" "5ca58a6a-aa46-4e5a-a2e1-b3fc6bc2efa6"
+ "publication-year" "2019"
+ "title" "A hybrid neural network model driver for multilayer two-dimensional materials developed by Wen and Tadmor (2019) v000"}
